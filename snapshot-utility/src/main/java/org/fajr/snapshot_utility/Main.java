@@ -1,33 +1,36 @@
-/**
- *  Copyright 2005-2015 Red Hat, Inc.
- *
- *  Red Hat licenses this file to you under the Apache License, version
- *  2.0 (the "License"); you may not use this file except in compliance
- *  with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
- *  implied.  See the License for the specific language governing
- *  permissions and limitations under the License.
- */
 package org.fajr.snapshot_utility;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.apache.commons.lang3.RandomStringUtils.randomAlphanumeric;
-
-/**
- * Example of the "main class". Put your bootstrap logic here.
- */
 public class Main {
 
-    public static void main(String[] args) throws InterruptedException {
-        while(true) {
-            System.out.println("Hello Fabric8! Here's your random string: " + randomAlphanumeric(5));
-            SECONDS.sleep(1);
-        }
-    }
+	public static void main(String[] args) throws InterruptedException {
+		
+		
+//		Utilities.startKeepAwakeThread();
+		Utilities.readSettingsWithCallback(new Callback() {
+
+			@Override
+			public void taskTerminated(boolean success, String message,Settings settings) {
+				System.out.println(message);
+				if (success) {
+					javax.swing.SwingUtilities.invokeLater(new Runnable() {
+						public void run() {
+							SnapshotWindow snapshotWindow = new SnapshotWindow(settings);
+							snapshotWindow.createAndShowWindow();
+						}
+					});
+				}else {
+					
+				}
+
+			}
+
+			@Override
+			public void taskTerminated(ScheduledJob scheduledJob , Settings settings) {
+				// TODO Auto-generated method stub
+				
+			}
+		});
+
+	}
 
 }
