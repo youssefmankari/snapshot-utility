@@ -2,7 +2,6 @@ package org.fajr.snapshot_utility;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
@@ -15,6 +14,8 @@ import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -24,7 +25,6 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -41,6 +41,7 @@ import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JDesktopPane;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -50,6 +51,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JTree;
 import javax.swing.KeyStroke;
@@ -64,10 +66,15 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 
+import org.apache.log4j.Logger;
 import org.fajr.snapshot_utility.event.ScreenshotEvent;
 import org.fajr.snapshot_utility.event.listener.ScreenshotEventListener;
 
-public class SnapshotWindow implements ActionListener, TreeSelectionListener, ScreenshotEventListener, MouseListener {
+public class SnapshotWindow
+		implements ActionListener, TreeSelectionListener, ScreenshotEventListener, MouseListener, ItemListener {
+	
+	static Logger log = Logger.getLogger(SnapshotWindow.class.getName());
+
 
 	JDesktopPane desktop;
 	private JFrame mainFrame;
@@ -80,12 +87,15 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 	private final Icon[] busyIcons = new Icon[15];
 	private javax.swing.Timer busyIconTimer = null;
 	private JLabel iconStatusLabel;
+	private JTextArea messageTextArea = new JTextArea();
 	private DefaultMutableTreeNode top;
 	private JPanel centerPanel;
 	private ScheduledJobsList scheduledJobsList = new ScheduledJobsList();
 	private List<ScreenshotGrabberTimerTask> screenshotGrabberTimerTaskList = new ArrayList<ScreenshotGrabberTimerTask>();
 
 	private Settings settings;
+	private JCheckBoxMenuItem testMenuItem;
+	private String title;
 
 	public SnapshotWindow(Settings settings) {
 		setSettings(settings);
@@ -97,6 +107,14 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 
 	public Settings getSettings() {
 		return settings;
+	}
+
+	public ScheduledJobsList getScheduledJobsList() {
+		return scheduledJobsList;
+	}
+
+	public JFrame getMainFrame() {
+		return mainFrame;
 	}
 
 	public void createAndShowWindow() {
@@ -111,19 +129,17 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		GraphicsDevice[] screens = graphicsEnvironment.getScreenDevices();
 		Rectangle screenBounds = screens[0].getDefaultConfiguration().getBounds();
 
-		mainFrame = new JFrame("Snapshot Window");
+		title = "Snapshot Window";
+		if (getSettings().getRunMode().equals("TEST")) {
+			title += " : Running in TEST MODE";
+		}
+		mainFrame = new JFrame(title);
 		mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
 		desktop = new JDesktopPane(); // a specialized layered pane
 
 		// Use the content pane's default BorderLayout. No need for
 		desktop.setLayout(new BorderLayout());
-
-//		JLabel titleLabel = new JLabel("Fajr Screenshot Grabber");
-//		titleLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-//		titleLabel.setBounds(5, 40, 100, 30);
-//		JPanel pageStartPanel = createLeftPanel();
-//		pageStartPanel.add(titleLabel);
 
 		JPanel lineStartPanel = createLeftPanel();
 		// Create the nodes.
@@ -144,9 +160,6 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		lineStartPanel.add(tree);
 		desktop.add(lineStartPanel, BorderLayout.LINE_START);
 
-//		JPanel centerPanel = createCenterPanel1();
-//		desktop.add(centerPanel, BorderLayout.CENTER);
-
 		desktop.setBackground(Color.lightGray);
 		mainFrame.getContentPane().add(desktop);
 
@@ -165,7 +178,7 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 
 		// a group of JMenuItems
 		menuItem = new JMenuItem("New screenschot", KeyEvent.VK_T);
-		menuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_1, ActionEvent.ALT_MASK));
+		menuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, ActionEvent.META_MASK));
 		menuItem.getAccessibleContext().setAccessibleDescription("New screenschot session");
 		menuItem.setActionCommand("new-screenshot");
 		menuItem.addActionListener(this);
@@ -177,6 +190,20 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		menu.add(menuItem);
 		menuItem.setActionCommand("settings");
 		menuItem.addActionListener(this);
+
+		// test mode
+		menu.addSeparator();
+		testMenuItem = new JCheckBoxMenuItem("TEST mode");
+		testMenuItem.setMnemonic(KeyEvent.VK_C);
+		String runMode = getSettings().getRunMode();
+		if (runMode != null && runMode.equals("TEST")) {
+			testMenuItem.setSelected(true);
+		} else {// Real mode
+
+			testMenuItem.setSelected(false);
+		}
+		testMenuItem.addItemListener(this);
+		menu.add(testMenuItem);
 
 		iconStatusLabel = new JLabel();
 
@@ -196,8 +223,11 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 	private void startSchedules() {
 		for (Iterator<ScheduledJob> iterator = scheduledJobsList.iterator(); iterator.hasNext();) {
 			ScheduledJob scheduledJob = (ScheduledJob) iterator.next();
-			if (scheduledJob.getStatus() == ScheduledJobStatus.SCHEDULED)
+			if (scheduledJob.getStatus() == ScheduledJobStatus.SCHEDULED) {
 				scheduleScreenGrab(scheduledJob);
+			} else if (scheduledJob.isRunPeriodically()) {
+				updateStartTimeAndSchedule(scheduledJob);
+			}
 
 		}
 
@@ -210,7 +240,7 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 			ClassLoader classLoader = getClass().getClassLoader();
 //			URL resource = classLoader.getResource(fileName);
 			URL resource = classLoader.getResource("busy-icons/busy-icon" + i + ".png");
-			// System.out.println("resource = " + resource);
+			// log.info("resource = " + resource);
 			busyIcons[i] = new ImageIcon(resource);
 		}
 	}
@@ -258,7 +288,7 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		jPanel.setLayout(null);
 		jPanel.setBorder(blackline);
 
-		JLabel statusLabel = new JLabel("status");
+		JLabel statusLabel = new JLabel("Status");
 //		Border redline = BorderFactory.createLineBorder(Color.red);
 //		statusLabel.setBorder(redline);
 		statusLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
@@ -323,9 +353,46 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		periodicityTextField.setBounds(135, 90, 228, 30);
 		jPanel.add(periodicityTextField);
 		periodicityTextField.setColumns(10);
-		periodicityTextField.setText(scheduledJob.getPeriodicity());
+		periodicityTextField.setText(scheduledJob.getPeriodicity() + "    (mm:ss)");
 		periodicityTextField.setEditable(false);
 		///////////////
+
+		JLabel runIntervalLabel = new JLabel();
+//		periodicityLabel.setBorder(redline);
+		runIntervalLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
+		runIntervalLabel.setBounds(1, 130, 245, 30);
+		if (scheduledJob.isRunPeriodically()) {
+			if(getSettings().getRunMode().equals("TEST")) {
+				runIntervalLabel.setText("This task run every " + scheduledJob.getInterval() + "minute.(test mode)");
+
+			}else {
+				runIntervalLabel.setText("This task run every " + scheduledJob.getInterval() + " hours.");
+
+			}
+		}
+		jPanel.add(runIntervalLabel);
+
+		messageTextArea.setFont(new Font("Times New Roman", Font.PLAIN, 14));
+		messageTextArea = new JTextArea();
+		messageTextArea.setEditable(false);
+		messageTextArea.setLineWrap(true);
+		messageTextArea.setWrapStyleWord(true);
+		messageTextArea.setColumns(20);
+		messageTextArea.setRows(5);
+		messageTextArea.setBackground(new Color(238, 238, 238));
+		messageTextArea.setBounds(1, 160, 380, 60);
+		if (scheduledJob.isRunPeriodically()) {
+			ScreenshotGrabberTimerTask screenshotGrabberTaskById = getScreenshotGrabberTaskById(scheduledJob.getId());
+			if (screenshotGrabberTaskById != null) {
+				Date startAt = screenshotGrabberTaskById.getStartAt();
+				Date endAt = screenshotGrabberTaskById.getEndAt();
+				messageTextArea.setText("Next Start Time :" + startAt + " . \n         End Time : " + endAt);
+			}
+		}
+		Border redline = BorderFactory.createLineBorder(Color.black);
+		messageTextArea.setBorder(redline);
+		jPanel.add(messageTextArea);
+
 		jPanel.setBorder(blackline);
 		jPanel.setVisible(true);
 		return jPanel;
@@ -337,7 +404,7 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		ClassLoader classLoader = getClass().getClassLoader();
 		Image image = null;
 		URL resource;
-		System.out.println("getIconStatus methof entred :scheduledJob.getStatus() = " + scheduledJob.getStatus());
+		//log.info("getIconStatus methof entred :scheduledJob.getStatus() = " + scheduledJob.getStatus());
 		switch (scheduledJob.getStatus()) {
 		case SCHEDULED:
 			stopBusyTimer();
@@ -395,11 +462,11 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 
 		if (settingsInternalFrame != null)
 			return;
-		settingsInternalFrame = new SettingsInternalFrame(desktop, settings, new Callback() {
+		settingsInternalFrame = new SettingsInternalFrame(mainFrame,desktop, centerPanel , settings, new Callback() {
 
 			@Override
 			public void taskTerminated(ScheduledJob scheduledJob, Settings settings) {
-				System.out.println("taskTerminated with callback---> scheduledJob = " + scheduledJob);
+				log.info("taskTerminated with callback---> scheduledJob = " + scheduledJob);
 				setSettings(settings);
 				scheduleScreenGrab(scheduledJob);
 				scheduledJobsList.add(scheduledJob);
@@ -415,8 +482,9 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 			@Override
 			public void internalFrameClosed(InternalFrameEvent e) {
 				settingsInternalFrame = null;
-				//SettingsInternalFrame settingsInternalFrame = (SettingsInternalFrame) e.getSource();
-				//ScheduledJob scheduledJob = settingsInternalFrame.getScheduledJob();
+				// SettingsInternalFrame settingsInternalFrame = (SettingsInternalFrame)
+				// e.getSource();
+				// ScheduledJob scheduledJob = settingsInternalFrame.getScheduledJob();
 			}
 		});
 		desktop.add(settingsInternalFrame);
@@ -535,6 +603,80 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		}
 	}
 
+	private void updateStartTimeAndSchedule(ScheduledJob scheduledJob) {
+		String startTimeString = scheduledJob.getStartAt();
+		String pattern = "E MMM dd HH:mm:ss zzz yyyy";
+		DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder()
+				// case insensitive to parse JAN and FEB
+				.parseCaseInsensitive()
+				// add pattern
+				.appendPattern(pattern)
+				// create formatter (use English Locale to parse month names)
+				.toFormatter(Locale.ENGLISH);
+		LocalDateTime startDateTime = LocalDateTime.parse(startTimeString, dateTimeFormatter);
+		log.info("startDateTime = " + startDateTime);
+		Date startAt = Date.from(startDateTime.atZone(ZoneId.systemDefault()).toInstant());
+		String endTimeString = scheduledJob.getEndAt();
+		LocalDateTime endDateTime = LocalDateTime.parse(endTimeString, dateTimeFormatter);
+		Date endAt = Date.from(endDateTime.atZone(ZoneId.systemDefault()).toInstant());
+
+		Date now = new Date();
+		int interval = scheduledJob.getInterval();// intervals in hours (in TEST mode :interval = 1min)
+
+		boolean b = true;
+
+		if (getSettings().getRunMode().equals("TEST")) {
+				// we are on test mode --->interval = 60secs
+			while (b) {
+
+				startAt = DateTimeUtils.addSecondsToDate(startAt, 60);
+				endAt = DateTimeUtils.addSecondsToDate(endAt, 60);
+				b = now.compareTo(startAt) > 0 || now.compareTo(startAt) == 0;
+//				log.info("b= "+(b?now+" is after "+startAt:now+" is before or equal "+startAt));
+			}
+		} else {
+			while (b) {
+				startAt = DateTimeUtils.addHoursToJavaUtilDate(startAt, interval);
+				endAt = DateTimeUtils.addHoursToJavaUtilDate(endAt, interval);
+				b = now.compareTo(startAt) > 0 || now.compareTo(startAt) == 0;
+			}
+		}
+
+		String periodicity = "00:" + scheduledJob.getPeriodicity();
+		DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.CANADA);
+		LocalTime period = LocalTime.parse(periodicity, dtf);
+		int secondOfDay = period.toSecondOfDay();
+		int millis = secondOfDay * 1000;
+		Timer timer = new Timer("Timer");
+		ScreenshotGrabberTimerTask task = new ScreenshotGrabberTimerTask(scheduledJob.getId(), getSettings(),
+				scheduledJob.getSelectedRectangle(), timer, startAt, endAt, millis);
+
+		log.info(
+				"startAt = " + startAt + " . endAt = " + endAt + " . period = " + period + " . millis = " + millis);
+//		if (scheduledJob.isRunPeriodically()) {
+		// interval = scheduledJob.getInterval();
+//			task.setRunPeriodically(true);
+
+		if(getSettings().getRunMode().equals("TEST")) {
+			task.setInterval(1);
+			timer.schedule(task, startAt, 1 * 60 * 1000L);
+		} else {
+			task.setInterval(interval);
+			timer.schedule(task, startAt, interval * 60 * 60 * 1000L);
+		}
+//		} else {
+//			task.setRunPeriodically(false);
+//			timer.schedule(task, startAt);
+//		}
+
+		screenshotGrabberTimerTaskList.add(task);
+		task.setScreenshotEventListener(this);
+
+		// create new scheduled job and add to tree view .
+		scheduledJob.setStatus(ScheduledJobStatus.SCHEDULED);
+
+	}
+
 	private void scheduleScreenGrab(ScheduledJob scheduledJob) {
 
 		SelectedRectangle selectedRectangle = scheduledJob.getSelectedRectangle();
@@ -555,7 +697,7 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 				// create formatter (use English Locale to parse month names)
 				.toFormatter(Locale.ENGLISH);
 		LocalDateTime startDateTime = LocalDateTime.parse(startTimeString, dateTimeFormatter);
-		System.out.println("startDateTime = " + startDateTime);
+		log.info("startDateTime = " + startDateTime);
 		Date startAt = Date.from(startDateTime.atZone(ZoneId.systemDefault()).toInstant());
 		String endTimeString = scheduledJob.getEndAt();
 		LocalDateTime endDateTime = LocalDateTime.parse(endTimeString, dateTimeFormatter);
@@ -568,19 +710,30 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		Timer timer = new Timer("Timer");
 		ScreenshotGrabberTimerTask task = new ScreenshotGrabberTimerTask(id, getSettings(), selectedRectangle, timer,
 				startAt, endAt, millis);
+
+		log.info(
+				"startAt = " + startAt + " . endAt = " + endAt + " . period = " + period + " . millis = " + millis);
+		if (scheduledJob.isRunPeriodically()) {
+			int interval = scheduledJob.getInterval();
+			task.setRunPeriodically(true);
+
+			if(getSettings().getRunMode().equals("TEST")) {
+				task.setInterval(1);
+				timer.schedule(task, startAt, 1 * 60 * 1000L);
+			} else {
+				task.setInterval(interval);
+				timer.schedule(task, startAt, interval * 60 * 60 * 1000L);
+			}
+		} else {
+			task.setRunPeriodically(false);
+			timer.schedule(task, startAt);
+		}
+
 		screenshotGrabberTimerTaskList.add(task);
 		task.setScreenshotEventListener(this);
-//		task.setTimer(timer);
-
-		System.out.println(
-				"startAt = " + startAt + " . endAt = " + endAt + " . period = " + period + " . millis = " + millis);
-//		timer.schedule(task, startAt, 24 * 60 * 60 * 1000L);
-		timer.schedule(task, startAt, 120 * 1000L);
 
 		// create new scheduled job and add to tree view .
 		scheduledJob.setStatus(ScheduledJobStatus.SCHEDULED);
-//		scheduledJobsList.add(scheduledJob);
-//		updateScheduledJobTreeView(scheduledJob);
 	}
 
 	private void updateScheduledJobTreeView(ScheduledJob scheduledJob) {
@@ -626,7 +779,7 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 
 	@Override
 	public void didTakeScreenshot(ScreenshotEvent screenshotEvent) {
-		System.out.println("SnapshotWindow class --> didTakeScreenshot method entred");
+		log.info("SnapshotWindow class --> didTakeScreenshot method entred");
 
 	}
 
@@ -657,19 +810,19 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 
 	@Override
 	public void screenshotGrabberStarted(int id) {
-		updateStatus(id, ScheduledJobStatus.RUNNING);
+		updateStatus(id, ScheduledJobStatus.RUNNING, null, null);
 		// persist status to file
-		Utilities.updateStatusForSettingId(id, ScheduledJobStatus.RUNNING);
+		Utilities.updateStatusForScheduleId(id, ScheduledJobStatus.RUNNING);
 	}
 
 	@Override
-	public void screenshotGrabberEnded(int id) {
-		updateStatus(id, ScheduledJobStatus.ENDED);
+	public void screenshotGrabberEnded(int id, Date nextStartAt, Date nextEndAt) {
+		updateStatus(id, ScheduledJobStatus.ENDED, nextStartAt, nextEndAt);
 		// persist status to file
-		Utilities.updateStatusForSettingId(id, ScheduledJobStatus.ENDED);
+		Utilities.updateStatusForScheduleId(id, ScheduledJobStatus.ENDED);
 	}
 
-	private void updateStatus(int id, ScheduledJobStatus newStatus) {
+	private void updateStatus(int id, ScheduledJobStatus newStatus, Date nextStartAt, Date nextEndAt) {
 		ScheduledJob scheduledJob = getScheduledJobById(id);
 		if (scheduledJob == null)
 			return;
@@ -690,6 +843,10 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 			if (image != null) {
 				busyIconTimer.stop();
 				iconStatusLabel.setIcon(new ImageIcon(image));
+			}
+
+			if (nextStartAt != null && nextEndAt != null && scheduledJob.isRunPeriodically()) {
+				messageTextArea.setText("Next Start Time :" + nextStartAt + " . \n           Ends at : " + nextEndAt);
 			}
 		}
 	}
@@ -714,16 +871,18 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		}
 	}
 
-	private void showPopupMenu(MouseEvent e, int id) {
+	private void showPopupMenu(MouseEvent e, final int id) {
 		final JPopupMenu popupmenu = new JPopupMenu("Edit");
 		JMenuItem removeJItemMenu = new JMenuItem("Remove");
 		removeJItemMenu.addActionListener(new ActionListener() {
 
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				ScreenshotGrabberTimerTask screenshotGrabberTimerTask = getScreenshotTaskById(id);
+				ScreenshotGrabberTimerTask screenshotGrabberTimerTask = getScreenshotGrabberTaskById(id);
 				if (screenshotGrabberTimerTask != null) {
-					screenshotGrabberTimerTask.getScreenshotTimer().cancel();
+					Timer screenshotTimer = screenshotGrabberTimerTask.getScreenshotTimer();
+					if (screenshotTimer != null)
+						screenshotTimer.cancel();
 					screenshotGrabberTimerTask.cancel();
 					screenshotGrabberTimerTaskList.remove(screenshotGrabberTimerTask);
 				}
@@ -738,7 +897,11 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 
 	}
 
-	protected ScreenshotGrabberTimerTask getScreenshotTaskById(int id) {
+	public List<ScreenshotGrabberTimerTask> getScreenshotGrabberTimerTaskList() {
+		return screenshotGrabberTimerTaskList;
+	}
+
+	protected ScreenshotGrabberTimerTask getScreenshotGrabberTaskById(int id) {
 		for (Iterator<ScreenshotGrabberTimerTask> iterator = screenshotGrabberTimerTaskList.iterator(); iterator
 				.hasNext();) {
 			ScreenshotGrabberTimerTask screenshotGrabberTimerTask = iterator.next();
@@ -761,6 +924,12 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 		}
 		model.reload(top);
 		tree.expandPath(tree.getSelectionPath());
+		if (centerPanel != null) {
+			desktop.remove(centerPanel);
+			centerPanel.setVisible(false);
+		}
+		desktop.revalidate();
+		mainFrame.repaint();
 	}
 
 	protected void removeScheduledJobById(int id) {
@@ -801,6 +970,21 @@ public class SnapshotWindow implements ActionListener, TreeSelectionListener, Sc
 	@Override
 	public void mouseExited(MouseEvent e) {
 		// TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public void itemStateChanged(ItemEvent e) {
+		title = "Snapshot Window";
+		if (testMenuItem.isSelected()) {
+			title += " : Running in TEST MODE";
+			getSettings().setRunMode("TEST");
+		}else {
+			getSettings().setRunMode("REAL");
+		}
+		mainFrame.setTitle(title);
+		boolean runMode = testMenuItem.isSelected();
+		Utilities.updateRunModeStatus(runMode);
 
 	}
 }

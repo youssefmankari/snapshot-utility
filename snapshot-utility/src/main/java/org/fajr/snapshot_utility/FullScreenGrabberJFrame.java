@@ -1,7 +1,6 @@
 package org.fajr.snapshot_utility;
 
 import java.awt.Color;
-import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GraphicsDevice;
@@ -15,25 +14,25 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.Area;
 
 import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+
+import org.apache.log4j.Logger;
 
 public class FullScreenGrabberJFrame extends JFrame {
 
 	private static final long serialVersionUID = 1L;
 	private SettingsInternalFrame settingsInternalFrame;
+	static Logger log = Logger.getLogger(FullScreenGrabberJFrame.class.getName());
+
 
 	public FullScreenGrabberJFrame(SettingsInternalFrame settingsInternalFrame, Settings fajrAppSettings) {
-
 		this.settingsInternalFrame = settingsInternalFrame;
 		setUndecorated(true);
-//		Dimension desktopSize = settingsInternalFrame.getSize();
-//		Dimension jInternalFrameSize = getSize();
 		GraphicsEnvironment graphicsEnvironment = GraphicsEnvironment.getLocalGraphicsEnvironment();
-
 		GraphicsDevice[] screens = graphicsEnvironment.getScreenDevices();
 		Rectangle screenBounds = screens[0].getDefaultConfiguration().getBounds();
-		//setBounds(0, 0, (int) ((desktopSize.width - jInternalFrameSize.width) / 0.5), (int) (desktopSize.height / 0.5));
-		setSize((int)screenBounds.getWidth(), (int)screenBounds.getHeight());
+		setSize((int) screenBounds.getWidth(), (int) screenBounds.getHeight());
 		add(new CapturePane());
 		setOpacity((float) 0.5);
 		setAlwaysOnTop(true);
@@ -80,8 +79,14 @@ public class FullScreenGrabberJFrame extends JFrame {
 				@Override
 				public void keyReleased(KeyEvent e) {
 
-					if (e.getKeyCode() == 10) {// code key for "enter" key
+					if (e.getKeyCode() == KeyEvent.VK_ENTER) {// code key for "enter" key
+						
 						FullScreenGrabberJFrame.this.dispose();
+						if (selectionBounds == null) {
+							JOptionPane.showMessageDialog(settingsInternalFrame, "Drag your mouse to select screen rectangle to capture and then hit <ENTER>");
+							return;
+						}
+
 						scheduleScreenshotGrab(selectionBounds);
 					}
 				}
@@ -92,8 +97,10 @@ public class FullScreenGrabberJFrame extends JFrame {
 		}
 
 		protected void scheduleScreenshotGrab(Rectangle selectionBounds2) {
-			System.out.println("scheduling...selectionBounds2 = " + selectionBounds2.toString());
-			SelectedRectangle selectedRectangle = new SelectedRectangle((int)selectionBounds2.getX(),(int) selectionBounds2.getY(),(int) selectionBounds2.getWidth(), (int)selectionBounds2.getHeight());
+			log.info("scheduling...selectionBounds2 = " + selectionBounds2.toString());
+			SelectedRectangle selectedRectangle = new SelectedRectangle((int) selectionBounds2.getX(),
+					(int) selectionBounds2.getY(), (int) selectionBounds2.getWidth(),
+					(int) selectionBounds2.getHeight());
 			settingsInternalFrame.screenRectangleSelected(selectedRectangle, null);
 		}
 

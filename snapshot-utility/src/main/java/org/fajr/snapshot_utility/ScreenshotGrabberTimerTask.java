@@ -18,9 +18,11 @@ import java.util.TimerTask;
 import javax.imageio.ImageIO;
 
 import org.apache.commons.lang3.time.DateUtils;
+import org.apache.log4j.Logger;
 import org.fajr.snapshot_utility.event.listener.ScreenshotEventListener;
 
 public class ScreenshotGrabberTimerTask extends TimerTask {
+	static Logger log = Logger.getLogger(ScreenshotGrabberTimerTask.class.getName());
 
 	private int id;
 	private Timer timer;
@@ -31,27 +33,9 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 	private Settings settings;
 	private Timer screenshotTimer;
 	private Robot robot;
+	private boolean runPeriodically;
+	private int interval;
 	
-	
-
-//	//	Rectangle[] rectangleArray = new Rectangle[screens.length];
-//		int i = 0;
-//		Robot[] robots = new Robot[screens.length];
-//		for (GraphicsDevice screen : screens) {
-//			Rectangle screenBounds = screen.getDefaultConfiguration().getBounds();
-//		//	rectangleArray[i] = screenBounds;
-//
-//			try {
-//				robots[i] = new Robot(screen);
-//			} catch (AWTException e) {
-//				// TODO Auto-generated catch block
-//				e.printStackTrace();
-//			}
-//			i++;
-//		}
-	
-	
-
 	public ScreenshotGrabberTimerTask(int id, Settings settings, SelectedRectangle selectedRectangle, Timer timer, Date startAt, Date endAt, int millis) {
 		initRobot();
 		setId(id);
@@ -64,8 +48,23 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 		setSettings(settings);
 	}
 	
+	public boolean isRunPeriodically() {
+		return runPeriodically;
+	}
+
+	public void setRunPeriodically(boolean runPeriodically) {
+		this.runPeriodically = runPeriodically;
+	}
+
+	public int getInterval() {
+		return interval;
+	}
+
+	public void setInterval(int interval) {
+		this.interval = interval;
+	}
+
 	private void initRobot() {
-		
 			GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
 			GraphicsDevice[] screens = ge.getScreenDevices();
 			try {
@@ -94,7 +93,7 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 
 	@Override
 	public void run() {
-		System.out.println(LocalDateTime.now() + " : daily  task running");
+		log.info(LocalDateTime.now() + " : daily  task running...");
 		executeTimerTask();
 	}
 
@@ -110,14 +109,25 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 				captureSelectedRectangle();
 				Date now = new Date();
 				
-				System.out.println("now = "+now + " . getEndAt() = "+getEndAt());
+				//log.info("now = "+now + " . getEndAt() = "+getEndAt());
 
 				if (now.after(getEndAt())) {
-					System.out.println(LocalDateTime.now() + " : child task done! adding 120secs to endAt.");
-					endAt = DateTimeUtils.addSecondsToDate(endAt,120);
-					System.out.println("Now, endAt = "+endAt);
+					
+					if(getSettings().getRunMode().equals("TEST")) {
+						log.info(LocalDateTime.now() + " : child task done! adding"+getInterval()*60 +" to endAt.");
+						startAt = DateTimeUtils.addSecondsToDate(startAt,60);//for test
+						endAt = DateTimeUtils.addSecondsToDate(endAt,60);//for test
+					}else {
+						log.info(LocalDateTime.now() + " : child task done! adding"+getInterval()*60*60 +" to endAt.");
+						startAt = DateTimeUtils.addSecondsToDate(startAt,getInterval()*60*60);
+						endAt   = DateTimeUtils.addSecondsToDate(endAt,getInterval()*60*60); 
+					}
+					
+
+
+					log.info("Now, endAt = "+endAt);
 					screenshotTimer.cancel();
-					getScreenshotEventListener().screenshotGrabberEnded(getId());
+					getScreenshotEventListener().screenshotGrabberEnded(getId(), startAt, endAt);
 				}
 
 			}
@@ -130,23 +140,18 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 	}
 
 	protected void captureSelectedRectangle() {
-		
-
-		String random = randomAlphanumeric(7);
-		
+		String random = randomAlphanumeric(10);
 		BufferedImage screenShot = robot.createScreenCapture(getSelectedRectangle());
 		File screenshotsFolder = new File(getSettings().getScreenshotsFolder(),"Fajr Screenshots");
 		if(!screenshotsFolder.exists()) 
 			screenshotsFolder.mkdirs();
-		File outputfile = new File(getSettings().getScreenshotsFolder()+File.separator+"Fajr Screenshots", "image_" + random + ".jpg");
+		File outputfile = new File(getSettings().getScreenshotsFolder()+File.separator+"Fajr Screenshots", "image_"+ getId()+"_" + random + ".jpg");
 
 		try {
 			ImageIO.write(screenShot, "jpg", outputfile);
 		} catch (IOException e1) {
-			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
-		
 	}
 
 	public void setTimer(Timer timer) {

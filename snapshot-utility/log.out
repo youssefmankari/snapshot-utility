@@ -1,0 +1,9 @@
+Fajr App started.
+Hello this is an info message
+Run Mode : REAL
+0 [main] DEBUG org.fajr.snapshot_utility.Main  - Fajr App started.
+1 [main] INFO org.fajr.snapshot_utility.Main  - Hello this is an info message
+616 [AWT-EventQueue-0] DEBUG org.fajr.snapshot_utility.Main  - Run Mode : REAL
+19 Mar. 2022 10:00:21,708 0 [main] DEBUG org.fajr.snapshot_utility.Main  - Fajr App started.
+19 Mar. 2022 10:00:21,711 3 [main] INFO org.fajr.snapshot_utility.Main  - Hello this is an info message
+19 Mar. 2022 10:00:22,407 699 [AWT-EventQueue-0] DEBUG org.fajr.snapshot_utility.Main  - Run Mode : REAL

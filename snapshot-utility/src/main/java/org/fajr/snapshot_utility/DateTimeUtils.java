@@ -13,7 +13,6 @@ public class DateTimeUtils {
 		LocalDate localDate = LocalDate.now();
 		LocalTime startLocalTime = LocalTime.parse(timeAsString);
 		LocalDateTime startLocalDateTime = LocalDateTime.of(localDate, startLocalTime);
-		LocalDateTime plusDays = startLocalDateTime.plusDays(1);
 		Date startAt = Date.from(startLocalDateTime.atZone(ZoneId.systemDefault()).toInstant());
 		return startAt;
 	}

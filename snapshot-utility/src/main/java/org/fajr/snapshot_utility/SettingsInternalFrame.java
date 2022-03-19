@@ -9,6 +9,8 @@ import java.awt.Point;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
 import java.beans.PropertyVetoException;
 import java.io.File;
 import java.io.FileWriter;
@@ -20,7 +22,9 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JDesktopPane;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -32,11 +36,14 @@ import javax.swing.JSpinner;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SpinnerDateModel;
-import javax.swing.border.EmptyBorder;
+import javax.swing.JSpinner.DefaultEditor;
+import javax.swing.SpinnerNumberModel;
+import javax.swing.border.Border;
 import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
 
 import org.apache.commons.lang3.RandomUtils;
+import org.apache.log4j.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -47,8 +54,9 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 	 * 
 	 */
 	private static final long serialVersionUID = 7048460840933746682L;
+	static Logger log = Logger.getLogger(SettingsInternalFrame.class.getName());
 
-	static int openFrameCount = 0;
+
 	static final int xOffset = 30, yOffset = 30;
 	JDesktopPane desktopPane;
 	private JTextField outputFolderTextField;
@@ -62,24 +70,48 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 	private ScheduledJob scheduledJob;
 	private Callback callback;
 
-	public SettingsInternalFrame(JDesktopPane desktop, Settings settings, Callback callback) {
-		super("Settings" + (++openFrameCount), false, // resizable
+	private JPanel contentPane;
+
+//	private JLabel selectedRectangleLabel;
+
+	private JTextArea selectedRectangleTextArea;
+
+	private JSpinner hoursSpinner;
+
+	private JCheckBox runTaskPeriodicallyCheckBox;
+	
+
+	public SettingsInternalFrame(JFrame mainFrame, JDesktopPane desktop, JPanel centerPanel, Settings settings, Callback callback) {
+		
+		super("Settings" , false, // resizable
 				true, // closable
 				false, // maximizable
 				false);// iconifiable
-
+		String  title = null;
 		setSettings(settings);
 		setCallback(callback);
+		if(getSettings().getRunMode().equals("TEST")) {
+			title = " : RUNNING IN TEST MODE";
+		}else {
+			title="";
+		}
+		
+		setTitle("Settings" +  title);
+		
+
+		
 		// ...Create the GUI and put it in the window...
 		this.desktopPane = desktop;
 		Dimension desktopSize = desktopPane.getSize();
 		Dimension jInternalFrameSize = getSize();
+		
+//		log.info("centerPanel = " +centerPanel.getPreferredSize() + ". mainFrame = "+mainFrame.getSize()+ "desktopSize.width="+desktopSize.width + " .desktopSize.height = "+desktopSize.height + " .jInternalFrameSize.width = "+jInternalFrameSize.width+ " . jInternalFrameSize.width =" +jInternalFrameSize.width);
 
-		int width2 = (int) ((desktopSize.width - jInternalFrameSize.width) / 1.5);
-		int height2 = (int) (desktopSize.height / 1.5);
-		setBounds(150, 150, width2,	height2);
+		int width2 = (int) ((desktopSize.width - jInternalFrameSize.width) / 1.3);
+		int height2 = (int) (desktopSize.height / 1.3);
+		setBounds(185, 25, width2, height2);
 		setResizable(false);
-		setMaximumSize(new Dimension(width2,height2));
+		setMaximumSize(new Dimension(width2, height2));
 
 		createGUI();
 
@@ -113,14 +145,12 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
 		setResizable(false);
-		JPanel contentPane = new JPanel();
-		contentPane.setBorder(new EmptyBorder(5, 5, 5, 5));
+		contentPane = new JPanel();
+//		contentPane.setBorder(new EmptyBorder(5, 5, 5, 5));
 		setContentPane(contentPane);
 		contentPane.setLayout(null);
 
-//		Border border = BorderFactory.createLineBorder(Color.BLUE, 5);
-
-		// set the border of this component
+		Border border = BorderFactory.createLineBorder(Color.BLUE, 5);
 
 		JLabel outputFolderLabel = new JLabel("Output Folder");
 		outputFolderLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
@@ -154,19 +184,7 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		startTimeSpinner = new JSpinner(new SpinnerDateModel());
 		JSpinner.DateEditor timeEditor = new JSpinner.DateEditor(startTimeSpinner, "dd-MM-yyyy HH:mm:ss");
 		startTimeSpinner.setEditor(timeEditor);
-//		if (FajrAppSettings.startTime != null) {
-//
-//				SimpleDateFormat format = new SimpleDateFormat("HH:mm:ss");
-//				try {
-//					Date startAt = format.parse(FajrAppSettings.startTime );
-//					startTimeSpinner.setValue(startAt);
-//				} catch (ParseException e) {
-//					e.printStackTrace();
-//				}
-//		}else {
-//			startTimeSpinner.setValue(new Date());
-//		}
-
+		((DefaultEditor) startTimeSpinner.getEditor()).getTextField().setEditable(false);
 		startTimeSpinner.setBounds(200, 40, 170, 30);
 		contentPane.add(startTimeSpinner);
 
@@ -178,19 +196,7 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		endTimeSpinner = new JSpinner(new SpinnerDateModel());
 		timeEditor = new JSpinner.DateEditor(endTimeSpinner, "dd-MM-yyyy HH:mm:ss");
 		endTimeSpinner.setEditor(timeEditor);
-//		if (FajrAppSettings.endTime  != null) {
-//			
-//
-//				SimpleDateFormat format = new SimpleDateFormat("HH:mm:ss");
-//				try {
-//					Date endAt = format.parse(FajrAppSettings.endTime);
-//					endTimeSpinner.setValue(endAt);
-//				} catch (ParseException e) {
-//					e.printStackTrace();
-//				}
-//		}else {
-//			endTimeSpinner.setValue(new Date());
-//		}
+		((DefaultEditor) endTimeSpinner.getEditor()).getTextField().setEditable(false);
 
 		endTimeSpinner.setBounds(200, 70, 170, 30);
 		contentPane.add(endTimeSpinner);
@@ -207,21 +213,10 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		cal.set(Calendar.SECOND, 5);
 		Date date = cal.getTime();
 
-//		if (FajrAppSettings.periodicity != null) {
-//			
-//
-//				SimpleDateFormat format = new SimpleDateFormat("mm:ss");
-//				try {
-//					Date period = format.parse(FajrAppSettings.periodicity);
-//					minutesSecondsTimeSpinner.setValue(period);
-//				} catch (ParseException e) {
-//					e.printStackTrace();
-//				}
-//		}else {
 		minutesSecondsTimeSpinner.setValue(date);
-//		}
-
 		minutesSecondsTimeSpinner.setEditor(timeEditor);
+		((DefaultEditor) minutesSecondsTimeSpinner.getEditor()).getTextField().setEditable(false);
+
 		minutesSecondsTimeSpinner.setBounds(200, 100, 100, 30);
 		contentPane.add(minutesSecondsTimeSpinner);
 
@@ -233,11 +228,9 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		label.setColumns(20);
 		label.setRows(5);
 		label.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		label.setBounds(5, 150, 200, 40);
+		label.setBounds(5, 150, 195, 40);
 		label.setBackground(new Color(238, 238, 238));
 		contentPane.add(label);
-		
-		
 
 		JButton selectRectangleButton = new JButton("Select Rectangle");
 		selectRectangleButton.setFont(new Font("Tahoma", Font.PLAIN, 14));
@@ -245,19 +238,72 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		selectRectangleButton.setActionCommand("select-rectangle");
 		selectRectangleButton.addActionListener(this);
 		contentPane.add(selectRectangleButton);
+
+		selectedRectangleTextArea = new JTextArea();
+//		selectedRectangleTextArea.setBorder(border);
+		selectedRectangleTextArea.setEditable(false);
+		selectedRectangleTextArea.setLineWrap(true);
+		selectedRectangleTextArea.setWrapStyleWord(true);
+		selectedRectangleTextArea.setColumns(20);
+		selectedRectangleTextArea.setRows(5);
+		selectedRectangleTextArea.setFont(new Font("Times New Roman", Font.PLAIN, 14));
+		selectedRectangleTextArea.setBounds(365, 150, 200, 100);
+		selectedRectangleTextArea.setBackground(new Color(238, 238, 238));
+		contentPane.add(selectedRectangleTextArea);
+
+		if(getSettings().getRunMode().equals("TEST")) {
+			runTaskPeriodicallyCheckBox = new JCheckBox("TEST MODE: Run every minute");
+			
+		}else {
+			runTaskPeriodicallyCheckBox = new JCheckBox("Run this Task Periodically:");
+		}
 		
+		runTaskPeriodicallyCheckBox.addItemListener(new ItemListener() {
+			public void itemStateChanged(ItemEvent e) {
+				if (runTaskPeriodicallyCheckBox.isSelected()) {
+					hoursSpinner.setEnabled(true);
+				} else {
+					hoursSpinner.setEnabled(false);
+				}
+			}
+		});
+		runTaskPeriodicallyCheckBox.setBorder(border);
+		runTaskPeriodicallyCheckBox.setFont(new Font("Times New Roman", Font.PLAIN, 14));
+		runTaskPeriodicallyCheckBox.setBounds(5, 250, 230, 30);
+		contentPane.add(runTaskPeriodicallyCheckBox);
+
+		SpinnerNumberModel m_numberSpinnerModel;
+		Integer current = Integer.valueOf(1);
+		Integer min = Integer.valueOf(1);
+		Integer max = Integer.valueOf(24);
+		Integer step = Integer.valueOf(1);
+		m_numberSpinnerModel = new SpinnerNumberModel(current, min, max, step);
+		
+		hoursSpinner = new JSpinner(m_numberSpinnerModel);
+		hoursSpinner.setFont(new Font("Times New Roman", Font.PLAIN, 14));
+		hoursSpinner.setBounds(235, 250, 55, 30);
+		((DefaultEditor) hoursSpinner.getEditor()).getTextField().setEditable(false);
+
+		border = BorderFactory.createLineBorder(Color.RED, 2);
+//	    m_numberSpinner.setBorder(border);
+		hoursSpinner.setEnabled(false);
+		contentPane.add(hoursSpinner);
+
+		JLabel hoursLabel = new JLabel("hours");
+//		runningJobPeriodicallyLabel.setBorder(border);
+		hoursLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
+		hoursLabel.setBounds(295, 250, 65, 30);
+		contentPane.add(hoursLabel);
 
 		JButton saveButton = new JButton("Save");
 		saveButton.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		saveButton.setBounds(300, 225, 100, 30);
+		saveButton.setBounds(450, 315, 100, 30);
 		saveButton.setActionCommand("save");
 		saveButton.addActionListener(this);
 		contentPane.add(saveButton);
 	}
 
 	private void startNewScrrenshotSession() {
-		//
-		
 		Toolkit toolkit = Toolkit.getDefaultToolkit();
 		ClassLoader classLoader = getClass().getClassLoader();
 		URL resource = classLoader.getResource(Preferences.cursorFileName);
@@ -283,45 +329,43 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 			Date startDate = (Date) startTimeSpinner.getValue();
 			Date endDate = (Date) endTimeSpinner.getValue();
 			Date periodicity = (Date) minutesSecondsTimeSpinner.getValue();
-			if(startDate.before(now) ) {
+			if (startDate.before(now)) {
 				JOptionPane.showMessageDialog(desktopPane, "Invalid start time: start time is in the past!");
 				return;
 			}
-			
-			if(endDate.before(now)) {
+
+			if (endDate.before(now)) {
 				JOptionPane.showMessageDialog(desktopPane, "Invalid end time: end time is in the past!");
 				return;
 			}
 
-			if(endDate.before(startDate)){
+			if (endDate.before(startDate)) {
 				JOptionPane.showMessageDialog(desktopPane, "Invalid end time: end time is before start time!");
 				return;
 			}
-			
-			if(periodicity.getMinutes()==0&&periodicity.getSeconds()==0) {
+
+			if (periodicity.getMinutes() == 0 && periodicity.getSeconds() == 0) {
 				JOptionPane.showMessageDialog(desktopPane, "00:00 is invalid value.");
 				return;
 			}
-			
-			if(selectedRectangle == null) {
-				JOptionPane.showMessageDialog(desktopPane, "Drag your mouse to select screen rectangle to capture, then hit <Enter>");
+
+			if (selectedRectangle == null) {
+				JOptionPane.showMessageDialog(desktopPane,
+						"Drag your mouse to select screen rectangle to capture, then hit <Enter>");
 				return;
 			}
-
-			
-			
 
 			File settingsFile = new File(Preferences.applicationSettingsFolder, Preferences.settingsFile);
 
 			if (settingsFile.exists()) {
-				System.out.println(settingsFile + " already exists");
+				log.info(settingsFile + " already exists");
 			} else
 				try {
-					System.out.println(settingsFile + " doesn't exists. trying to create one...");
+					log.info(settingsFile + " doesn't exists. trying to create one...");
 					if (settingsFile.createNewFile()) {
-						System.out.println(settingsFile + " was created");
+						log.info(settingsFile + " was created");
 					} else {
-						System.out.println(settingsFile + " was not created");
+						log.info(settingsFile + " was not created");
 					}
 				} catch (IOException e2) {
 					// TODO Auto-generated catch block
@@ -397,7 +441,11 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 			period = format.format(periodicity);
 		}
 
-		scheduledJob = new ScheduledJob(id, startDate.toString(), endDate.toString(), period, getSelectedRectangle());
+		boolean runTaskPeriodically = runTaskPeriodicallyCheckBox.isSelected();
+		int taskRunInterval = (Integer) hoursSpinner.getValue();
+
+		scheduledJob = new ScheduledJob(id, startDate.toString(), endDate.toString(), period, getSelectedRectangle(),
+				runTaskPeriodically, taskRunInterval);
 		scheduledJob.setStatus(ScheduledJobStatus.SCHEDULED);
 		scheduledJobList.add(scheduledJob);
 		settings.setSchedules(scheduledJobList);
@@ -416,6 +464,10 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 
 	public void screenRectangleSelected(SelectedRectangle selectedRectangle, Object object) {
 		setSelectedRectangle(selectedRectangle);
+		String text = "Selected Rectangle :\n X = " + selectedRectangle.getX() + " .\n Y = " + selectedRectangle.getY()
+				+ " .\n Width = " + selectedRectangle.getWidth() + " .\n Height = " + selectedRectangle.getHeight();
+		selectedRectangleTextArea.setText(text);
+
 	}
 
 	public void setSelectedRectangle(SelectedRectangle selectedRectangle) {

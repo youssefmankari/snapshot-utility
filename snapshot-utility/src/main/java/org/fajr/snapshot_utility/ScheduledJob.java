@@ -7,16 +7,27 @@ public class ScheduledJob {
 	private int id;
 	private String startAt;
 	private String endAt;
+	/*
+	 * interval in mm:ss between two consecutives screenshot
+	 */
 	private String periodicity;
 	private ScheduledJobStatus status; 
 	private SelectedRectangle selectedRectangle;
+	private boolean runPeriodically;
+	
+	/**
+	 * Interval in hours between two consecutives tasks batch
+	 */
+	private int interval;
 
-	public ScheduledJob(int id, String startAt, String endAt, String periodicity,SelectedRectangle selectedRectangle) {
+	public ScheduledJob(int id, String startAt, String endAt, String periodicity,SelectedRectangle selectedRectangle, boolean runTaskPeriodically, int interval) {
 		setId(id);
 		setStartAt(startAt);
 		setEndAt(endAt);
 		setPeriodicity(periodicity);
 		setSelectedRectangle(selectedRectangle);
+		setRunPeriodically(runTaskPeriodically);
+		setInterval(interval);
 	}
 
 	public ScheduledJob() {
@@ -70,9 +81,11 @@ public class ScheduledJob {
 		return gson.toJson(this);//"{\"id\":\"+getId()};
 	}
 	
+	
 	public String description() {
 		return "ScheduledJob [id=" + id + ", startAt=" + startAt + ", endAt=" + endAt + ", periodicity=" + periodicity
-				+ ", status=" + status + "]";
+				+ ", status=" + status + ", selectedRectangle=" + selectedRectangle + ", runPeriodically="
+				+ runPeriodically + ", interval=" + interval + "]";
 	}
 
 	public SelectedRectangle getSelectedRectangle() {
@@ -82,4 +95,22 @@ public class ScheduledJob {
 	public void setSelectedRectangle(SelectedRectangle selectedRectangle) {
 		this.selectedRectangle = selectedRectangle;
 	}
+
+	public boolean isRunPeriodically() {
+		return runPeriodically;
+	}
+
+	public void setRunPeriodically(boolean runPeriodically) {
+		this.runPeriodically = runPeriodically;
+	}
+
+	public int getInterval() {
+		return interval;
+	}
+
+	public void setInterval(int interval) {
+		this.interval = interval;
+	}
+	
+	
 }

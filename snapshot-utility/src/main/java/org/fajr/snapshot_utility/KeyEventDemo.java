@@ -48,24 +48,34 @@ package org.fajr.snapshot_utility;
 */
  
 import java.awt.BorderLayout;
-import java.awt.Container;
 import java.awt.Dimension;
-import java.awt.event.*;
-import javax.swing.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.UIManager;
+import javax.swing.UnsupportedLookAndFeelException;
  
 public class KeyEventDemo extends JFrame
         implements KeyListener,
         ActionListener
 {
-    JTextArea displayArea;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	JTextArea displayArea;
     JTextField typingArea;
     static final String newline = System.getProperty("line.separator");
      
     public static void main(String[] args) {
-        /* Use an appropriate Look and Feel */
         try {
-            //UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
-            //UIManager.setLookAndFeel("com.sun.java.swing.plaf.gtk.GTKLookAndFeel");
             UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
         } catch (UnsupportedLookAndFeelException ex) {
             ex.printStackTrace();
@@ -76,11 +86,7 @@ public class KeyEventDemo extends JFrame
         } catch (ClassNotFoundException ex) {
             ex.printStackTrace();
         }
-        /* Turn off metal's use of bold fonts */
         UIManager.put("swing.boldMetal", Boolean.FALSE);
-         
-        //Schedule a job for event dispatch thread:
-        //creating and showing this application's GUI.
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
             public void run() {
                 createAndShowGUI();
@@ -115,19 +121,10 @@ public class KeyEventDemo extends JFrame
         typingArea = new JTextField(20);
         typingArea.addKeyListener(this);
          
-        //Uncomment this if you wish to turn off focus
-        //traversal.  The focus subsystem consumes
-        //focus traversal keys, such as Tab and Shift Tab.
-        //If you uncomment the following line of code, this
-        //disables focus traversal and the Tab events will
-        //become available to the key event listener.
-        //typingArea.setFocusTraversalKeysEnabled(false);
-         
         displayArea = new JTextArea();
         displayArea.setEditable(false);
         JScrollPane scrollPane = new JScrollPane(displayArea);
         scrollPane.setPreferredSize(new Dimension(375, 125));
-         
         getContentPane().add(typingArea, BorderLayout.PAGE_START);
         getContentPane().add(scrollPane, BorderLayout.CENTER);
         getContentPane().add(button, BorderLayout.PAGE_END);
