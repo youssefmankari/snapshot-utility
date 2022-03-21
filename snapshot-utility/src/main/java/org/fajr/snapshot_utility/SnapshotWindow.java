@@ -122,41 +122,7 @@ public class SnapshotWindow
 	public void createAndShowWindow() {
 
 		initBusyIcons();
-		 try {
-			UIManager.setLookAndFeel(
-			            UIManager.getCrossPlatformLookAndFeelClassName());
-		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (InstantiationException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IllegalAccessException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (UnsupportedLookAndFeelException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		 
-		 try {
-			UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
-		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (InstantiationException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IllegalAccessException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (UnsupportedLookAndFeelException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		//System.setProperty("apple.laf.useScreenMenuBar", "true");
-		//System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Stack");
-
+		setupLookAndFeel();
 		GraphicsEnvironment graphicsEnvironment = GraphicsEnvironment.getLocalGraphicsEnvironment();
 
 		GraphicsDevice[] screens = graphicsEnvironment.getScreenDevices();
@@ -251,6 +217,32 @@ public class SnapshotWindow
 		// start screengrab schedules if we have any
 		startSchedules();
 
+	}
+
+	private void setupLookAndFeel() {
+		String osName = System.getProperty("os.name");
+		if(osName!=null && osName.equals("Mac OS X")){
+			System.setProperty("apple.laf.useScreenMenuBar", "true");
+			System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Stack");
+		}else {
+			try {
+				UIManager.setLookAndFeel(
+				            UIManager.getCrossPlatformLookAndFeelClassName());
+				UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (InstantiationException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IllegalAccessException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (UnsupportedLookAndFeelException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
 	}
 
 	private void startSchedules() {
