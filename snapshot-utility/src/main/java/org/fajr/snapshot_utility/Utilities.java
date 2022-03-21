@@ -19,7 +19,7 @@ public class Utilities {
 
 
 	public static synchronized void readSettingsWithCallback(Callback callback) {
-		log.info("Reading Fajr App settings...");
+		//log.info("Reading Fajr App settings...");
 		String applicationSettingsFolder = Preferences.applicationSettingsFolder;
 		String settingsFile = Preferences.settingsFile;
 
