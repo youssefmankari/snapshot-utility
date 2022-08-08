@@ -3,8 +3,11 @@ package org.fajr.snapshot_utility;
 import com.google.gson.Gson;
 
 public class ScheduledJob {
+	
+	protected String clazz = getClass().getName(); 
 
 	private int id;
+	
 	private String startAt;
 	private String endAt;
 	/*
@@ -32,6 +35,16 @@ public class ScheduledJob {
 
 	public ScheduledJob() {
 		
+	}
+
+	public ScheduledJob(int id, String startAt, String endAt, String periodicity, boolean runTaskPeriodically,
+			int interval) {
+		setId(id);
+		setStartAt(startAt);
+		setEndAt(endAt);
+		setPeriodicity(periodicity);
+		setRunPeriodically(runTaskPeriodically);
+		setInterval(interval);
 	}
 
 	public int getId() {
@@ -110,6 +123,14 @@ public class ScheduledJob {
 
 	public void setInterval(int interval) {
 		this.interval = interval;
+	}
+	
+	public String getClazz() {
+		return clazz;
+	}
+	
+	public void setClazz(String clazz) {
+		this.clazz = clazz;
 	}
 	
 	

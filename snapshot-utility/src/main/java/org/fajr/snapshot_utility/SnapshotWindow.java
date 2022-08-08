@@ -2,6 +2,7 @@ package org.fajr.snapshot_utility;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
@@ -32,9 +33,13 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.Timer;
 
 import javax.imageio.ImageIO;
@@ -51,6 +56,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JTree;
@@ -61,43 +67,62 @@ import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.border.Border;
 import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
+import javax.swing.event.TreeModelEvent;
+import javax.swing.event.TreeModelListener;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 
 import org.apache.log4j.Logger;
 import org.fajr.snapshot_utility.event.ScreenshotEvent;
 import org.fajr.snapshot_utility.event.listener.ScreenshotEventListener;
+import org.opencv.core.Core;
 
 public class SnapshotWindow
 		implements ActionListener, TreeSelectionListener, ScreenshotEventListener, MouseListener, ItemListener {
-	
+
 	static Logger log = Logger.getLogger(SnapshotWindow.class.getName());
 
-
-	JDesktopPane desktop;
+	private JDesktopPane desktop;
 	private JFrame mainFrame;
-	protected SettingsInternalFrame settingsInternalFrame;
+	protected ScreenshotSessionInternalFrame screenshotSessionInternalFrame;
 	private DefaultMutableTreeNode screenshotsNode;
-	private DefaultMutableTreeNode scheduledJobsMasterNode;
+	private DefaultMutableTreeNode scheduledJobsNode;
 	private JTree tree;
+	protected DefaultTreeModel treeModel;
+
 	private JTextField statusTextField;
 
 	private final Icon[] busyIcons = new Icon[15];
 	private javax.swing.Timer busyIconTimer = null;
 	private JLabel iconStatusLabel;
 	private JTextArea messageTextArea = new JTextArea();
-	private DefaultMutableTreeNode top;
+	private DefaultMutableTreeNode rootNode;
 	private JPanel centerPanel;
 	private ScheduledJobsList scheduledJobsList = new ScheduledJobsList();
-	private List<ScreenshotGrabberTimerTask> screenshotGrabberTimerTaskList = new ArrayList<ScreenshotGrabberTimerTask>();
+	private List<GrabberTimerTask> grabberTimerTaskList = new ArrayList<GrabberTimerTask>();
 
 	private Settings settings;
 	private JCheckBoxMenuItem testMenuItem;
 	private String title;
+
+	private SettingsInternalFrame settingsInternalFrame;
+
+	private JMenu streamMenu;
+	private Map<Integer,DefaultMutableTreeNode> screenshotJobsNodeMap = new HashMap<Integer,DefaultMutableTreeNode>();
+
+	private JMenuItem addIpCameraMenuItem;
+
+	static {
+		System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+	}
+
+//	private DefaultMutableTreeNode ipCameraNode;
 
 	public SnapshotWindow(Settings settings) {
 		setSettings(settings);
@@ -142,21 +167,29 @@ public class SnapshotWindow
 
 		JPanel lineStartPanel = createLeftPanel();
 		// Create the nodes.
-		top = new DefaultMutableTreeNode("Library");
-		createNodes(top);
+		rootNode = new DefaultMutableTreeNode("Library");
+		treeModel = new DefaultTreeModel(rootNode);
+		treeModel.addTreeModelListener(new MyTreeModelListener());
+		tree = new JTree(treeModel);
+		tree.setEditable(true);
+		tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+		tree.setShowsRootHandles(true);
+		createNodes();
 
 		// Create a tree that allows one selection at a time.
-		tree = new JTree(top);
+		tree = new JTree(rootNode);
 		tree.putClientProperty("JTree.lineStyle", "None");
 		tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
 
 		// Listen for when the selection changes.
 		tree.addTreeSelectionListener(this);
-		tree.addMouseListener(this);
+
+		tree.setCellRenderer(new TreeRenderer());
+		// tree.addMouseListener(this);
 
 		tree.putClientProperty("JTree.lineStyle", "Horizontal");
-
-		lineStartPanel.add(tree);
+	    JScrollPane scrollPane = new JScrollPane(tree);
+		lineStartPanel.add(scrollPane);
 		desktop.add(lineStartPanel, BorderLayout.LINE_START);
 
 		desktop.setBackground(Color.lightGray);
@@ -190,6 +223,19 @@ public class SnapshotWindow
 		menuItem.setActionCommand("settings");
 		menuItem.addActionListener(this);
 
+		// Build the first menu.
+		streamMenu = new JMenu("Stream");
+		streamMenu.setMnemonic(KeyEvent.VK_C);
+		streamMenu.getAccessibleContext().setAccessibleDescription("Add Stream");
+
+		addIpCameraMenuItem = new JMenuItem("Add IP Camera", new ImageIcon("images/middle.gif"));
+		addIpCameraMenuItem.setMnemonic(KeyEvent.VK_D);
+		addIpCameraMenuItem.setActionCommand("add-ip-camera");
+		addIpCameraMenuItem.addActionListener(this);
+		streamMenu.add(addIpCameraMenuItem);
+
+		menuBar.add(streamMenu);
+
 		// test mode
 		menu.addSeparator();
 		testMenuItem = new JCheckBoxMenuItem("TEST mode");
@@ -214,20 +260,19 @@ public class SnapshotWindow
 		mainFrame.setLocationRelativeTo(null); // center it
 		mainFrame.setVisible(true);
 
-		// start screengrab schedules if we have any
+		// start screengrab/ipCameraGrab schedules if we have any schedules saved
 		startSchedules();
 
 	}
 
 	private void setupLookAndFeel() {
 		String osName = System.getProperty("os.name");
-		if(osName!=null && osName.equals("Mac OS X")){
+		if (osName != null && osName.equals("Mac OS X")) {
 			System.setProperty("apple.laf.useScreenMenuBar", "true");
 			System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Stack");
-		}else {
+		} else {
 			try {
-				UIManager.setLookAndFeel(
-				            UIManager.getCrossPlatformLookAndFeelClassName());
+				UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
 				UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
 			} catch (ClassNotFoundException e) {
 				// TODO Auto-generated catch block
@@ -249,55 +294,156 @@ public class SnapshotWindow
 		for (Iterator<ScheduledJob> iterator = scheduledJobsList.iterator(); iterator.hasNext();) {
 			ScheduledJob scheduledJob = (ScheduledJob) iterator.next();
 			if (scheduledJob.getStatus() == ScheduledJobStatus.SCHEDULED) {
-				scheduleScreenGrab(scheduledJob);
+				String clazz = scheduledJob.getClazz();
+				if (clazz.equals(IpCameraScheduledJob.class.getName()))
+					scheduleIpCameraScheduledJob(scheduledJob);
+				else if (clazz.equals(ScreenGrabScheduledJob.class.getName()))
+					scheduleScreenGrab(scheduledJob);
 			} else if (scheduledJob.isRunPeriodically()) {
 				updateStartTimeAndSchedule(scheduledJob);
 			}
-
 		}
+	}
+
+	private void scheduleIpCameraScheduledJob(ScheduledJob scheduledJob) {
+		IpCameraScheduledJob ipCameraScheduledJob = (IpCameraScheduledJob) scheduledJob;
+		String ipCameraURL = ipCameraScheduledJob.getIpCameraURL();
+		int id = scheduledJob.getId();
+
+		String startTimeString = scheduledJob.getStartAt();
+		String pattern = "E MMM dd HH:mm:ss zzz yyyy";
+		DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder()
+				// case insensitive to parse JAN and FEB
+				.parseCaseInsensitive()
+				// add pattern
+				.appendPattern(pattern)
+				// create formatter (use English Locale to parse month names)
+				.toFormatter(Locale.ENGLISH);
+		LocalDateTime startDateTime = LocalDateTime.parse(startTimeString, dateTimeFormatter);
+		log.info("startDateTime = " + startDateTime);
+		Date startAt = Date.from(startDateTime.atZone(ZoneId.systemDefault()).toInstant());
+		String endTimeString = scheduledJob.getEndAt();
+		LocalDateTime endDateTime = LocalDateTime.parse(endTimeString, dateTimeFormatter);
+		Date endAt = Date.from(endDateTime.atZone(ZoneId.systemDefault()).toInstant());
+		String periodicity = "00:" + scheduledJob.getPeriodicity();
+		DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.CANADA);
+		LocalTime period = LocalTime.parse(periodicity, dtf);
+		int secondOfDay = period.toSecondOfDay();
+		int millis = secondOfDay * 1000;
+		Timer timer = new Timer("ip-camera-grabber-timer");
+		IpCameraGrabberTimerTask task = new IpCameraGrabberTimerTask(id, getSettings(), ipCameraURL, timer, startAt,
+				endAt, millis);
+
+		log.info("startAt = " + startAt + " . endAt = " + endAt + " . period = " + period + " . millis = " + millis);
+		if (scheduledJob.isRunPeriodically()) {
+			int interval = scheduledJob.getInterval();
+			task.setRunPeriodically(true);
+
+			if (getSettings().getRunMode().equals("TEST")) {
+				task.setInterval(1);
+				timer.schedule(task, startAt, 1 * 60 * 1000L);
+			} else {
+				task.setInterval(interval);
+				timer.schedule(task, startAt, interval * 60 * 60 * 1000L);
+			}
+		} else {
+			task.setRunPeriodically(false);
+			timer.schedule(task, startAt);
+		}
+
+		grabberTimerTaskList.add(task);
+		task.setScreenshotEventListener(this);
+
+		// create new scheduled job and add to tree view .
+		scheduledJob.setStatus(ScheduledJobStatus.SCHEDULED);
 
 	}
 
 	public void initBusyIcons() {
-		// ResourceBundle fajrResourceBundle =
-		// ResourceBundle.getBundle("tv/bug/brain/ui/resources/BrainUI");
+
 		for (int i = 0; i < busyIcons.length; i++) {
 			ClassLoader classLoader = getClass().getClassLoader();
-//			URL resource = classLoader.getResource(fileName);
 			URL resource = classLoader.getResource("busy-icons/busy-icon" + i + ".png");
-			// log.info("resource = " + resource);
 			busyIcons[i] = new ImageIcon(resource);
 		}
 	}
 
-	private void createNodes(DefaultMutableTreeNode top) {
+	private void createNodes() {
 
-		screenshotsNode = new DefaultMutableTreeNode("Screenshots");
-		top.add(screenshotsNode);
-		scheduledJobsMasterNode = new DefaultMutableTreeNode("Scheduled Jobs");
+//		screenshotsNode = new DefaultMutableTreeNode("Screenshots");
+//		top.add(screenshotsNode);
+//		scheduledJobsMasterNode = new DefaultMutableTreeNode("Scheduled Jobs");
+//
+//		List<ScheduledJob> schedules = settings.getSchedules();
+//		if (schedules != null && schedules.size() != 0) {
+//			addSchedulesToTreeView(schedules);
+//		}
+//		top.add(scheduledJobsMasterNode);
+
+		String screenshotsName = new String("Screenshots");
+		String scheduledJobsName = new String("Scheduled Jobs");
+
+
+		screenshotsNode = addObject(rootNode, screenshotsName);
+		scheduledJobsNode = addObject(rootNode, scheduledJobsName);
 
 		List<ScheduledJob> schedules = settings.getSchedules();
 		if (schedules != null && schedules.size() != 0) {
 			addSchedulesToTreeView(schedules);
 		}
+	}
 
-		// for test
-//		DefaultMutableTreeNode scheduledJobNode = new DefaultMutableTreeNode(new ScheduledJob(0, new Date(), new Date(), "00:05"));
-//		scheduledJobsMasterNode.add(scheduledJobNode);
+	/** Add child to the currently selected node. */
+	public DefaultMutableTreeNode addObject(Object child) {
+		DefaultMutableTreeNode parentNode = null;
+		TreePath parentPath = tree.getSelectionPath();
 
-		top.add(scheduledJobsMasterNode);
+		if (parentPath == null) {
+			parentNode = rootNode;
+		} else {
+			parentNode = (DefaultMutableTreeNode) (parentPath.getLastPathComponent());
+		}
 
+		return addObject(parentNode, child, true);
+	}
+
+	public DefaultMutableTreeNode addObject(DefaultMutableTreeNode parent, Object child) {
+		 DefaultMutableTreeNode addObject = addObject(parent, child, true);
+		 return addObject;
+	}
+
+	public DefaultMutableTreeNode addObject(DefaultMutableTreeNode parent, Object child, boolean shouldBeVisible) {
+		DefaultMutableTreeNode childNode = new DefaultMutableTreeNode(child);
+
+		if (parent == null) {
+			parent = rootNode;
+		}
+
+		
+		// It is key to invoke this on the TreeModel, and NOT DefaultMutableTreeNode
+		log.info("childNode = "+childNode+ " .parent = "+parent +".  parent.getChildCount()= "+parent.getChildCount());
+		treeModel.insertNodeInto(childNode, parent, parent.getChildCount());
+		treeModel.reload(rootNode);
+		tree.expandPath(tree.getSelectionPath());
+
+		if (shouldBeVisible) {
+			log.info("childNode.getPath() = "+childNode.getPath());
+			tree.makeVisible(new TreePath(childNode.getPath()));
+			tree.scrollPathToVisible(new TreePath(childNode.getPath()));
+			tree.updateUI();
+		}
+		return childNode;
 	}
 
 	private void addSchedulesToTreeView(List<ScheduledJob> schedules) {
 		for (Iterator<ScheduledJob> iterator = schedules.iterator(); iterator.hasNext();) {
 			ScheduledJob scheduledJob = iterator.next();
-			DefaultMutableTreeNode scheduledJobNode = new DefaultMutableTreeNode(scheduledJob.getId());
-			scheduledJobsMasterNode.add(scheduledJobNode);
+			addObject(scheduledJobsNode, scheduledJob.getId());
 			scheduledJobsList.add(scheduledJob);
 		}
 	}
-
+	
+	
 	private static JPanel createLeftPanel() {
 		Border blackline = BorderFactory.createLineBorder(Color.white);
 		JPanel jPanel = new JPanel();
@@ -306,23 +452,25 @@ public class SnapshotWindow
 		return jPanel;
 	}
 
-	private JPanel createMiddlePanel(ScheduledJob scheduledJob) {
+	private JPanel createMiddlePanel(ScheduledJob scheduledJob, String clazz) {
 
 		Border blackline = BorderFactory.createLineBorder(Color.white);
 		JPanel jPanel = new JPanel();
 		jPanel.setLayout(null);
 		jPanel.setBorder(blackline);
 
+		int line = 1;
+
 		JLabel statusLabel = new JLabel("Status");
 //		Border redline = BorderFactory.createLineBorder(Color.red);
 //		statusLabel.setBorder(redline);
 		statusLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		statusLabel.setBounds(1, 1, 100, 30);
+		statusLabel.setBounds(1, line, 100, 30);
 		jPanel.add(statusLabel);
 
 		statusTextField = new JTextField();
 		statusTextField.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		statusTextField.setBounds(135, 1, 228, 30);
+		statusTextField.setBounds(135, line, 228, 30);
 		jPanel.add(statusTextField);
 		statusTextField.setColumns(10);
 		statusTextField.setText(scheduledJob.getStatus().toString());
@@ -332,71 +480,93 @@ public class SnapshotWindow
 		Image image = getStatusIcon(scheduledJob);
 		if (image != null)
 			iconStatusLabel.setIcon(new ImageIcon(image));
-		iconStatusLabel.setBounds(365, 1, 25, 25);
+		iconStatusLabel.setBounds(365, line, 25, 25);
 //		iconStatusLabel.setBorder(redline);
 		jPanel.add(iconStatusLabel);
 
+		/////////////
+
+		if (clazz.equals(IpCameraScheduledJob.class.getName())) {
+			line += 30;
+			JLabel urlLabel = new JLabel("URL");
+			urlLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
+			urlLabel.setBounds(1, line, 100, 30);
+			jPanel.add(urlLabel);
+			JTextField urlTextField = new JTextField();
+			urlTextField.setFont(new Font("Tahoma", Font.PLAIN, 14));
+			urlTextField.setBounds(135, line, 228, 30);
+			urlTextField.setColumns(10);
+			urlTextField.setText(((IpCameraScheduledJob) scheduledJob).getIpCameraURL());
+			urlTextField.setEditable(false);
+			jPanel.add(urlTextField);
+		}
+
 		////////
+		line += 30;
 		JLabel startAtLabel = new JLabel("Start Time");
 //		startAtLabel.setBorder(redline);
 		startAtLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		startAtLabel.setBounds(1, 30, 100, 30);
+		startAtLabel.setBounds(1, line, 100, 30);
 		jPanel.add(startAtLabel);
 
 		JTextField startAtTextField = new JTextField();
 		startAtTextField.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		startAtTextField.setBounds(135, 30, 228, 30);
+		startAtTextField.setBounds(135, line, 228, 30);
 		startAtTextField.setColumns(10);
 		startAtTextField.setText(scheduledJob.getStartAt().toString());
 		startAtTextField.setEditable(false);
 		jPanel.add(startAtTextField);
 
 		////////
+		line += 30;
 		JLabel endAtLabel = new JLabel("End Time");
 //		endAtLabel.setBorder(redline);
 		endAtLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		endAtLabel.setBounds(1, 60, 100, 30);
+		endAtLabel.setBounds(1, line, 100, 30);
 		jPanel.add(endAtLabel);
 
 		JTextField endAtTextField = new JTextField();
 		endAtTextField.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		endAtTextField.setBounds(135, 60, 228, 30);
+		endAtTextField.setBounds(135, line, 228, 30);
 		jPanel.add(endAtTextField);
 		endAtTextField.setColumns(10);
 		endAtTextField.setText(scheduledJob.getEndAt().toString());
 		endAtTextField.setEditable(false);
 
 		////////
+		line += 30;
 		JLabel periodicityLabel = new JLabel("Take screenshot every:");
 //		periodicityLabel.setBorder(redline);
 		periodicityLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		periodicityLabel.setBounds(1, 90, 135, 30);
+		periodicityLabel.setBounds(1, line, 135, 30);
 		jPanel.add(periodicityLabel);
 
 		JTextField periodicityTextField = new JTextField();
 		periodicityTextField.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		periodicityTextField.setBounds(135, 90, 228, 30);
+		periodicityTextField.setBounds(135, line, 228, 30);
 		jPanel.add(periodicityTextField);
 		periodicityTextField.setColumns(10);
 		periodicityTextField.setText(scheduledJob.getPeriodicity() + "    (mm:ss)");
 		periodicityTextField.setEditable(false);
 		///////////////
-
+		line += 30;
 		JLabel runIntervalLabel = new JLabel();
 //		periodicityLabel.setBorder(redline);
 		runIntervalLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		runIntervalLabel.setBounds(1, 130, 245, 30);
+		runIntervalLabel.setBounds(1, line, 245, 30);
 		if (scheduledJob.isRunPeriodically()) {
-			if(getSettings().getRunMode().equals("TEST")) {
+			if (getSettings().getRunMode().equals("TEST")) {
 				runIntervalLabel.setText("This task run every " + scheduledJob.getInterval() + "minute.(test mode)");
 
-			}else {
+			} else {
 				runIntervalLabel.setText("This task run every " + scheduledJob.getInterval() + " hours.");
 
 			}
 		}
 		jPanel.add(runIntervalLabel);
 
+		// String classType = scheduledJob.getType();
+		line += 30;
 		messageTextArea.setFont(new Font("Times New Roman", Font.PLAIN, 14));
 		messageTextArea = new JTextArea();
 		messageTextArea.setEditable(false);
@@ -405,17 +575,17 @@ public class SnapshotWindow
 		messageTextArea.setColumns(20);
 		messageTextArea.setRows(5);
 		messageTextArea.setBackground(new Color(238, 238, 238));
-		messageTextArea.setBounds(1, 160, 380, 60);
+		messageTextArea.setBounds(1, line, 380, 60);
 		if (scheduledJob.isRunPeriodically()) {
-			ScreenshotGrabberTimerTask screenshotGrabberTaskById = getScreenshotGrabberTaskById(scheduledJob.getId());
+			GrabberTimerTask screenshotGrabberTaskById = getGrabberTimerTaskById(scheduledJob.getId());
 			if (screenshotGrabberTaskById != null) {
 				Date startAt = screenshotGrabberTaskById.getStartAt();
 				Date endAt = screenshotGrabberTaskById.getEndAt();
 				messageTextArea.setText("Next Start Time :" + startAt + " . \n         End Time : " + endAt);
 			}
 		}
-		Border redline = BorderFactory.createLineBorder(Color.black);
-		messageTextArea.setBorder(redline);
+		Border borderline = BorderFactory.createLineBorder(Color.black);
+		messageTextArea.setBorder(borderline);
 		jPanel.add(messageTextArea);
 
 		jPanel.setBorder(blackline);
@@ -429,7 +599,8 @@ public class SnapshotWindow
 		ClassLoader classLoader = getClass().getClassLoader();
 		Image image = null;
 		URL resource;
-		//log.info("getIconStatus methof entred :scheduledJob.getStatus() = " + scheduledJob.getStatus());
+		// log.info("getIconStatus methof entred :scheduledJob.getStatus() = " +
+		// scheduledJob.getStatus());
 		switch (scheduledJob.getStatus()) {
 		case SCHEDULED:
 			stopBusyTimer();
@@ -459,63 +630,160 @@ public class SnapshotWindow
 	// React to menu selections.
 	public void actionPerformed(ActionEvent e) {
 		if ("settings".equals(e.getActionCommand())) { // new
+			showSettingsWindow();
 		} else if ("new-screenshot".equals(e.getActionCommand())) { // new
-			createAndShowSettingsWindow();
-		} else { // quit
-			quit();
+			startNewScreenshotSession();
+		} else if ("add-ip-camera".equals(e.getActionCommand())) { // new
+			showIpCameraSettingFrame();
 		}
 	}
 
-//	private void startNewScrrenshotSession() {
-//		//
-//		String fileName = "telescop.png";
-//		Toolkit toolkit = Toolkit.getDefaultToolkit();
-//		ClassLoader classLoader = getClass().getClassLoader();
-//		URL resource = classLoader.getResource(fileName);
-//		Image image = toolkit.getImage(resource);
-//		Cursor cursor = toolkit.createCustomCursor(image, new Point(0, 0), "png");
-//		FullScreenGrabberJFrame fullScreenGrabberInternalFrame = new FullScreenGrabberJFrame(this, null);
-//		fullScreenGrabberInternalFrame.setCursor(cursor);
-//	}
+	private void showIpCameraSettingFrame() {
+		IpCameraSettingInternalFrame ipCameraSettingInternalFrame = new IpCameraSettingInternalFrame(mainFrame, desktop,
+				centerPanel, settings, new Callback() {
 
-	public JDesktopPane getDesktop() {
-		return desktop;
+					@Override
+					public void taskTerminated(ScheduledJob scheduledJob, Settings settings) {
+
+						setSettings(settings);
+						scheduleIpCameraGrab(scheduledJob);
+						scheduledJobsList.add(scheduledJob);
+						updateScheduledJobTreeView(scheduledJob);
+					}
+
+					@Override
+					public void taskTerminated(boolean success, String message, Settings settings) {
+
+					}
+				});
+		ipCameraSettingInternalFrame.createAndShowGUI();
+		desktop.add(ipCameraSettingInternalFrame, BorderLayout.CENTER);
+		try {
+			ipCameraSettingInternalFrame.setSelected(true);
+		} catch (java.beans.PropertyVetoException e) {
+			log.error(e.getMessage());
+		}
+
 	}
 
-	// Create a new internal frame.
-	protected void createAndShowSettingsWindow() {
+	protected void scheduleIpCameraGrab(ScheduledJob scheduledJob) {
+		IpCameraScheduledJob ipCameraScheduledJob = (IpCameraScheduledJob) scheduledJob;
+		String ipCameraURL = ipCameraScheduledJob.getIpCameraURL();
+		int id = scheduledJob.getId();
+
+		String startTimeString = scheduledJob.getStartAt();
+		String pattern = "E MMM dd HH:mm:ss zzz yyyy";
+		DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder()
+				// case insensitive to parse JAN and FEB
+				.parseCaseInsensitive()
+				// add pattern
+				.appendPattern(pattern)
+				// create formatter (use English Locale to parse month names)
+				.toFormatter(Locale.ENGLISH);
+		LocalDateTime startDateTime = LocalDateTime.parse(startTimeString, dateTimeFormatter);
+		log.info("startDateTime = " + startDateTime);
+		Date startAt = Date.from(startDateTime.atZone(ZoneId.systemDefault()).toInstant());
+		String endTimeString = scheduledJob.getEndAt();
+		LocalDateTime endDateTime = LocalDateTime.parse(endTimeString, dateTimeFormatter);
+		Date endAt = Date.from(endDateTime.atZone(ZoneId.systemDefault()).toInstant());
+		String periodicity = "00:" + scheduledJob.getPeriodicity();
+		DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.CANADA);
+		LocalTime period = LocalTime.parse(periodicity, dtf);
+		int secondOfDay = period.toSecondOfDay();
+		int millis = secondOfDay * 1000;
+		Timer timer = new Timer("ip-camera-grabber-timer");
+
+//		ScreenshotGrabberTimerTask task = new ScreenshotGrabberTimerTask(id, getSettings(), selectedRectangle, timer,
+//				startAt, endAt, millis);
+		IpCameraGrabberTimerTask task = new IpCameraGrabberTimerTask(id, getSettings(), ipCameraURL, timer, startAt,
+				endAt, millis);
+
+		log.info("IpCameraGrabberTimerTask --> startAt = " + startAt + " . endAt = " + endAt + " . period = " + period
+				+ " . millis = " + millis);
+		if (scheduledJob.isRunPeriodically()) {
+			int interval = scheduledJob.getInterval();
+			task.setRunPeriodically(true);
+
+			if (getSettings().getRunMode().equals("TEST")) {
+				task.setInterval(1);
+				timer.schedule(task, startAt, 1 * 60 * 1000L);
+			} else {
+				task.setInterval(interval);
+				timer.schedule(task, startAt, interval * 60 * 60 * 1000L);
+			}
+		} else {
+			task.setRunPeriodically(false);
+			timer.schedule(task, startAt);
+		}
+
+		grabberTimerTaskList.add(task);
+		task.setScreenshotEventListener(this);
+
+		// create new scheduled job and add to tree view .
+		scheduledJob.setStatus(ScheduledJobStatus.SCHEDULED);
+
+	}
+
+	private void showSettingsWindow() {
 
 		if (settingsInternalFrame != null)
 			return;
-		settingsInternalFrame = new SettingsInternalFrame(mainFrame,desktop, centerPanel , settings, new Callback() {
 
-			@Override
-			public void taskTerminated(ScheduledJob scheduledJob, Settings settings) {
-				log.info("taskTerminated with callback---> scheduledJob = " + scheduledJob);
-				setSettings(settings);
-				scheduleScreenGrab(scheduledJob);
-				scheduledJobsList.add(scheduledJob);
-				updateScheduledJobTreeView(scheduledJob);
-			}
+		settingsInternalFrame = new SettingsInternalFrame(desktop, getSettings());
 
-			@Override
-			public void taskTerminated(boolean success, String message, Settings settings) {
-
-			}
-		});
 		settingsInternalFrame.addInternalFrameListener(new InternalFrameAdapter() {
 			@Override
 			public void internalFrameClosed(InternalFrameEvent e) {
 				settingsInternalFrame = null;
-				// SettingsInternalFrame settingsInternalFrame = (SettingsInternalFrame)
-				// e.getSource();
-				// ScheduledJob scheduledJob = settingsInternalFrame.getScheduledJob();
 			}
 		});
 		desktop.add(settingsInternalFrame);
 		try {
 			settingsInternalFrame.setSelected(true);
 		} catch (java.beans.PropertyVetoException e) {
+			log.error(e.getMessage());
+		}
+	}
+
+	public JDesktopPane getDesktop() {
+		return desktop;
+	}
+
+	protected void startNewScreenshotSession() {
+
+		if (screenshotSessionInternalFrame != null)
+			return;
+		screenshotSessionInternalFrame = new ScreenshotSessionInternalFrame(mainFrame, desktop, centerPanel, settings,
+				new Callback() {
+
+					@Override
+					public void taskTerminated(ScheduledJob scheduledJob, Settings settings) {
+						log.info("taskTerminated with callback---> scheduledJob = " + scheduledJob);
+						setSettings(settings);
+						scheduleScreenGrab(scheduledJob);
+						scheduledJobsList.add(scheduledJob);
+						updateScheduledJobTreeView(scheduledJob);
+					}
+
+					@Override
+					public void taskTerminated(boolean success, String message, Settings settings) {
+
+					}
+				});
+		screenshotSessionInternalFrame.addInternalFrameListener(new InternalFrameAdapter() {
+			@Override
+			public void internalFrameClosed(InternalFrameEvent e) {
+				screenshotSessionInternalFrame = null;
+				// SettingsInternalFrame settingsInternalFrame = (SettingsInternalFrame)
+				// e.getSource();
+				// ScheduledJob scheduledJob = settingsInternalFrame.getScheduledJob();
+			}
+		});
+		desktop.add(screenshotSessionInternalFrame);
+		try {
+			screenshotSessionInternalFrame.setSelected(true);
+		} catch (java.beans.PropertyVetoException e) {
+			log.error(e.getMessage());
 		}
 	}
 
@@ -629,6 +897,7 @@ public class SnapshotWindow
 	}
 
 	private void updateStartTimeAndSchedule(ScheduledJob scheduledJob) {
+		GrabberTimerTask task = null;
 		String startTimeString = scheduledJob.getStartAt();
 		String pattern = "E MMM dd HH:mm:ss zzz yyyy";
 		DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder()
@@ -646,25 +915,17 @@ public class SnapshotWindow
 		Date endAt = Date.from(endDateTime.atZone(ZoneId.systemDefault()).toInstant());
 
 		Date now = new Date();
-		int interval = scheduledJob.getInterval();// intervals in hours (in TEST mode :interval = 1min)
-
-		boolean b = true;
-
+		int interval = 0;
 		if (getSettings().getRunMode().equals("TEST")) {
-				// we are on test mode --->interval = 60secs
-			while (b) {
-
-				startAt = DateTimeUtils.addSecondsToDate(startAt, 60);
-				endAt = DateTimeUtils.addSecondsToDate(endAt, 60);
-				b = now.compareTo(startAt) > 0 || now.compareTo(startAt) == 0;
-//				log.info("b= "+(b?now+" is after "+startAt:now+" is before or equal "+startAt));
-			}
+			interval = 60;
 		} else {
-			while (b) {
-				startAt = DateTimeUtils.addHoursToJavaUtilDate(startAt, interval);
-				endAt = DateTimeUtils.addHoursToJavaUtilDate(endAt, interval);
-				b = now.compareTo(startAt) > 0 || now.compareTo(startAt) == 0;
-			}
+			interval = scheduledJob.getInterval() * 60 * 60;
+		}
+		boolean b = true;
+		while (b) {
+			startAt = DateTimeUtils.addSecondsToDate(startAt, interval);
+			endAt = DateTimeUtils.addSecondsToDate(endAt, interval);
+			b = now.compareTo(startAt) > 0 || now.compareTo(startAt) == 0;
 		}
 
 		String periodicity = "00:" + scheduledJob.getPeriodicity();
@@ -673,16 +934,21 @@ public class SnapshotWindow
 		int secondOfDay = period.toSecondOfDay();
 		int millis = secondOfDay * 1000;
 		Timer timer = new Timer("Timer");
-		ScreenshotGrabberTimerTask task = new ScreenshotGrabberTimerTask(scheduledJob.getId(), getSettings(),
-				scheduledJob.getSelectedRectangle(), timer, startAt, endAt, millis);
+		String clazz = scheduledJob.getClazz();
+		if (clazz.equals(IpCameraScheduledJob.class.getName()))
+			task = new IpCameraGrabberTimerTask(scheduledJob.getId(), getSettings(),
+					((IpCameraScheduledJob) scheduledJob).getIpCameraURL(), timer, startAt, endAt, millis);
+		else if (clazz.equals(ScreenGrabScheduledJob.class.getName())) {
+			task = new ScreenshotGrabberTimerTask(scheduledJob.getId(), getSettings(),
+					scheduledJob.getSelectedRectangle(), timer, startAt, endAt, millis);
+		}
 
-		log.info(
-				"startAt = " + startAt + " . endAt = " + endAt + " . period = " + period + " . millis = " + millis);
+		log.info("startAt = " + startAt + " . endAt = " + endAt + " . period = " + period + " . millis = " + millis);
 //		if (scheduledJob.isRunPeriodically()) {
 		// interval = scheduledJob.getInterval();
 //			task.setRunPeriodically(true);
 
-		if(getSettings().getRunMode().equals("TEST")) {
+		if (getSettings().getRunMode().equals("TEST")) {
 			task.setInterval(1);
 			timer.schedule(task, startAt, 1 * 60 * 1000L);
 		} else {
@@ -694,7 +960,7 @@ public class SnapshotWindow
 //			timer.schedule(task, startAt);
 //		}
 
-		screenshotGrabberTimerTaskList.add(task);
+		grabberTimerTaskList.add(task);
 		task.setScreenshotEventListener(this);
 
 		// create new scheduled job and add to tree view .
@@ -736,13 +1002,12 @@ public class SnapshotWindow
 		ScreenshotGrabberTimerTask task = new ScreenshotGrabberTimerTask(id, getSettings(), selectedRectangle, timer,
 				startAt, endAt, millis);
 
-		log.info(
-				"startAt = " + startAt + " . endAt = " + endAt + " . period = " + period + " . millis = " + millis);
+		log.info("startAt = " + startAt + " . endAt = " + endAt + " . period = " + period + " . millis = " + millis);
 		if (scheduledJob.isRunPeriodically()) {
 			int interval = scheduledJob.getInterval();
 			task.setRunPeriodically(true);
 
-			if(getSettings().getRunMode().equals("TEST")) {
+			if (getSettings().getRunMode().equals("TEST")) {
 				task.setInterval(1);
 				timer.schedule(task, startAt, 1 * 60 * 1000L);
 			} else {
@@ -754,7 +1019,7 @@ public class SnapshotWindow
 			timer.schedule(task, startAt);
 		}
 
-		screenshotGrabberTimerTaskList.add(task);
+		grabberTimerTaskList.add(task);
 		task.setScreenshotEventListener(this);
 
 		// create new scheduled job and add to tree view .
@@ -762,11 +1027,28 @@ public class SnapshotWindow
 	}
 
 	private void updateScheduledJobTreeView(ScheduledJob scheduledJob) {
-		DefaultMutableTreeNode scheduledJobTreeNode = new DefaultMutableTreeNode(scheduledJob.getId());
-		scheduledJobsMasterNode.add(scheduledJobTreeNode);
-		DefaultTreeModel model = (DefaultTreeModel) tree.getModel();
-		model.reload(top);
-		tree.expandPath(tree.getSelectionPath());
+		
+		addObject(scheduledJobsNode, scheduledJob.getId());
+	}
+
+//	private void updateIpCameraScheduledJobTreeView(ScheduledJob scheduledJob) {
+//		DefaultMutableTreeNode scheduledJobTreeNode = new DefaultMutableTreeNode(scheduledJob.getId());
+//		ipCameraNode.add(scheduledJobTreeNode);
+//		DefaultTreeModel model = (DefaultTreeModel) tree.getModel();
+//		model.reload(top);
+//		tree.expandPath(tree.getSelectionPath());
+//	}
+
+	private void updateScreenshotsTreeView(ScreenshotEvent screenshotEvent) {
+		int scheduledJobId = screenshotEvent.getScheduledJobId();
+		DefaultMutableTreeNode screenshotParentNode = screenshotJobsNodeMap.get(scheduledJobId);
+		//DefaultMutableTreeNode screenshotParentNode = null;
+		if(screenshotParentNode == null) {
+			screenshotParentNode = addObject(screenshotsNode,screenshotEvent.getScheduledJobId());
+			screenshotJobsNodeMap.put(scheduledJobId, screenshotParentNode);
+		}
+		addObject(screenshotParentNode, screenshotEvent.getScreenshotFile().getName());
+		
 	}
 
 	@Override
@@ -782,15 +1064,52 @@ public class SnapshotWindow
 		if (node.isLeaf() && (nodeInfo instanceof Integer)) {
 			int scheduledJobId = (Integer) nodeInfo;
 			ScheduledJob scheduledJob = getScheduledJobById(scheduledJobId);
-			centerPanel = createMiddlePanel(scheduledJob);
+			String clazz = scheduledJob.getClazz();
+			centerPanel = createMiddlePanel(scheduledJob, clazz);
+
+			centerPanel.setVisible(true);
+			desktop.add(centerPanel, BorderLayout.CENTER);
+		} else if (node.isLeaf() && (nodeInfo instanceof String)) {
+			String fileName = (String) nodeInfo;
+
+			if (fileName.equals("Screenshots")) {
+				return;
+			}
+			if (fileName.equals("Scheduled Jobs")) {
+				return;
+			}
+			if (fileName.equals("IP Cameras")) {
+				return;
+			}
+			centerPanel = createMiddlePanel(fileName);
 			centerPanel.setVisible(true);
 			desktop.add(centerPanel, BorderLayout.CENTER);
 		}
 		desktop.revalidate();
-//		SwingUtilities.updateComponentTreeUI(mainFrame);
-//		mainFrame.invalidate();
-//		mainFrame.validate();
 		mainFrame.repaint();
+	}
+
+	private JPanel createMiddlePanel(String screenshotFileName) {
+		Border whiteLine = BorderFactory.createLineBorder(Color.white);
+		JPanel jPanel = new JPanel();
+		jPanel.setLayout(null);
+
+		File screenshotFile = new File(getSettings().getScreenshotsFolder() + File.separator + "Fajr Screenshots",
+				screenshotFileName);
+
+		BufferedImage myPicture = null;
+		try {
+			myPicture = ImageIO.read(screenshotFile);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		JLabel picLabel = new JLabel(new ImageIcon(myPicture));
+		int width = myPicture.getWidth() / 2;
+		int height = myPicture.getHeight() / 2;
+		picLabel.setBounds(1, 1, width, height);
+		picLabel.setBorder(whiteLine);
+		jPanel.add(picLabel);
+		return jPanel;
 	}
 
 	private ScheduledJob getScheduledJobById(int scheduledJobId) {
@@ -802,11 +1121,6 @@ public class SnapshotWindow
 		return null;
 	}
 
-	@Override
-	public void didTakeScreenshot(ScreenshotEvent screenshotEvent) {
-		log.info("SnapshotWindow class --> didTakeScreenshot method entred");
-
-	}
 
 	private void showBusyIcons() {
 
@@ -848,30 +1162,44 @@ public class SnapshotWindow
 	}
 
 	private void updateStatus(int id, ScheduledJobStatus newStatus, Date nextStartAt, Date nextEndAt) {
-		ScheduledJob scheduledJob = getScheduledJobById(id);
-		if (scheduledJob == null)
-			return;
-		scheduledJob.setStatus(newStatus);
-		DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode) tree.getLastSelectedPathComponent();
-		if (selectedNode == null)
-			return;
+		log.info(Thread.currentThread().getName());
+		if (!SwingUtilities.isEventDispatchThread()) {
+			SwingUtilities.invokeLater(new Runnable() {
 
-		Object userObject = selectedNode.getUserObject();
-		if (userObject instanceof String)
-			return;
+				@Override
+				public void run() {
+					updateStatus(id, newStatus, nextStartAt, nextEndAt);
 
-		Integer selectedId = (Integer) userObject;
-		if (selectedId == id) {
-			statusTextField.setText(newStatus.toString());
+				}
+			});
 
-			Image image = getStatusIcon(scheduledJob);
-			if (image != null) {
-				busyIconTimer.stop();
-				iconStatusLabel.setIcon(new ImageIcon(image));
-			}
+		} else {
+			ScheduledJob scheduledJob = getScheduledJobById(id);
+			if (scheduledJob == null)
+				return;
+			scheduledJob.setStatus(newStatus);
+			DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode) tree.getLastSelectedPathComponent();
+			if (selectedNode == null)
+				return;
 
-			if (nextStartAt != null && nextEndAt != null && scheduledJob.isRunPeriodically()) {
-				messageTextArea.setText("Next Start Time :" + nextStartAt + " . \n           Ends at : " + nextEndAt);
+			Object userObject = selectedNode.getUserObject();
+			if (userObject instanceof String)
+				return;
+
+			Integer selectedId = (Integer) userObject;
+			if (selectedId == id) {
+				statusTextField.setText(newStatus.toString());
+
+				Image image = getStatusIcon(scheduledJob);
+				if (image != null) {
+					busyIconTimer.stop();
+					iconStatusLabel.setIcon(new ImageIcon(image));
+				}
+
+				if (nextStartAt != null && nextEndAt != null && scheduledJob.isRunPeriodically()) {
+					messageTextArea
+							.setText("Next Start Time :" + nextStartAt + " . \n           Ends at : " + nextEndAt);
+				}
 			}
 		}
 	}
@@ -903,13 +1231,13 @@ public class SnapshotWindow
 
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				ScreenshotGrabberTimerTask screenshotGrabberTimerTask = getScreenshotGrabberTaskById(id);
-				if (screenshotGrabberTimerTask != null) {
-					Timer screenshotTimer = screenshotGrabberTimerTask.getScreenshotTimer();
+				GrabberTimerTask grabberTimerTask = getGrabberTimerTaskById(id);
+				if (grabberTimerTask != null) {
+					Timer screenshotTimer = grabberTimerTask.getTimer();
 					if (screenshotTimer != null)
 						screenshotTimer.cancel();
-					screenshotGrabberTimerTask.cancel();
-					screenshotGrabberTimerTaskList.remove(screenshotGrabberTimerTask);
+					grabberTimerTask.cancel();
+					grabberTimerTaskList.remove(grabberTimerTask);
 				}
 				removeScheduledJobById(id);
 				removeFromJTree(id);
@@ -922,16 +1250,15 @@ public class SnapshotWindow
 
 	}
 
-	public List<ScreenshotGrabberTimerTask> getScreenshotGrabberTimerTaskList() {
-		return screenshotGrabberTimerTaskList;
+	public List<GrabberTimerTask> getGrabberTimerTaskList() {
+		return grabberTimerTaskList;
 	}
 
-	protected ScreenshotGrabberTimerTask getScreenshotGrabberTaskById(int id) {
-		for (Iterator<ScreenshotGrabberTimerTask> iterator = screenshotGrabberTimerTaskList.iterator(); iterator
-				.hasNext();) {
-			ScreenshotGrabberTimerTask screenshotGrabberTimerTask = iterator.next();
-			if (screenshotGrabberTimerTask.getId() == id)
-				return screenshotGrabberTimerTask;
+	protected GrabberTimerTask getGrabberTimerTaskById(int id) {
+		for (Iterator<GrabberTimerTask> iterator = grabberTimerTaskList.iterator(); iterator.hasNext();) {
+			GrabberTimerTask grabberTimerTask = iterator.next();
+			if (grabberTimerTask.getId() == id)
+				return grabberTimerTask;
 		}
 		return null;
 	}
@@ -947,7 +1274,7 @@ public class SnapshotWindow
 				}
 			}
 		}
-		model.reload(top);
+		model.reload(rootNode);
 		tree.expandPath(tree.getSelectionPath());
 		if (centerPanel != null) {
 			desktop.remove(centerPanel);
@@ -1004,7 +1331,7 @@ public class SnapshotWindow
 		if (testMenuItem.isSelected()) {
 			title += " : Running in TEST MODE";
 			getSettings().setRunMode("TEST");
-		}else {
+		} else {
 			getSettings().setRunMode("REAL");
 		}
 		mainFrame.setTitle(title);
@@ -1012,4 +1339,81 @@ public class SnapshotWindow
 		Utilities.updateRunModeStatus(runMode);
 
 	}
+
+	@Override
+	public void screenshotGrabberDidTakeScreenshot(ScreenshotEvent screenshotEvent) {
+		updateScreenshotsTreeView(screenshotEvent);
+	}
+
+	@Override
+	public void screenshotGrabberEndedWithException(String message, int id, Date startAt, Date endAt) {
+		// TODO Auto-generated method stub
+		log.info("job id=" + id + message);
+
+	}
+
+	class TreeRenderer extends DefaultTreeCellRenderer {
+
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected, boolean expanded,
+				boolean leaf, int row, boolean hasFocus) {
+
+			super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
+			DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
+
+			Object userObject = node.getUserObject();
+			if (userObject instanceof Integer) {
+				ScheduledJob scheduledJob = getScheduledJobById((int) userObject);
+				if (scheduledJob.getClazz().equals(IpCameraScheduledJob.class.getName())) {
+					ImageIcon cameraImageIcon = getImageIcon("camera.jpg");
+					this.setIcon(cameraImageIcon);
+				} else if (scheduledJob.getClazz().equals(ScreenGrabScheduledJob.class.getName())) {
+					ImageIcon screenshotImageIcon = getImageIcon("screenshot.png");
+					this.setIcon(screenshotImageIcon);
+				}
+			}
+			return this;
+		}
+
+		ImageIcon getImageIcon(String iconName) {
+			ClassLoader classLoader = getClass().getClassLoader();
+			URL resource = classLoader.getResource(iconName);
+			ImageIcon cameraIcon = new ImageIcon(resource);
+			Image image = cameraIcon.getImage();
+			Image newimg = image.getScaledInstance(20, 20, java.awt.Image.SCALE_SMOOTH);
+			ImageIcon imageIcon = new ImageIcon(newimg);
+			return imageIcon;
+		}
+	}
+
+	class MyTreeModelListener implements TreeModelListener {
+		public void treeNodesChanged(TreeModelEvent e) {
+			DefaultMutableTreeNode node;
+			node = (DefaultMutableTreeNode) (e.getTreePath().getLastPathComponent());
+
+			/*
+			 * If the event lists children, then the changed node is the child of the node
+			 * we've already gotten. Otherwise, the changed node and the specified node are
+			 * the same.
+			 */
+
+			int index = e.getChildIndices()[0];
+			node = (DefaultMutableTreeNode) (node.getChildAt(index));
+
+			System.out.println("The user has finished editing the node.");
+			System.out.println("New value: " + node.getUserObject());
+		}
+
+		public void treeNodesInserted(TreeModelEvent e) {
+		}
+
+		public void treeNodesRemoved(TreeModelEvent e) {
+		}
+
+		public void treeStructureChanged(TreeModelEvent e) {
+		}
+	}
+
 }

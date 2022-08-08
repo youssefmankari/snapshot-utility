@@ -49,12 +49,12 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 /* Used by InternalFrameDemo.java. */
-public class SettingsInternalFrame extends JInternalFrame implements ActionListener {
+public class ScreenshotSessionInternalFrame extends JInternalFrame implements ActionListener {
 	/**
 	 * 
 	 */
 	private static final long serialVersionUID = 7048460840933746682L;
-	static Logger log = Logger.getLogger(SettingsInternalFrame.class.getName());
+	static Logger log = Logger.getLogger(ScreenshotSessionInternalFrame.class.getName());
 
 
 	static final int xOffset = 30, yOffset = 30;
@@ -81,9 +81,9 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 	private JCheckBox runTaskPeriodicallyCheckBox;
 	
 
-	public SettingsInternalFrame(JFrame mainFrame, JDesktopPane desktop, JPanel centerPanel, Settings settings, Callback callback) {
+	public ScreenshotSessionInternalFrame(JFrame mainFrame, JDesktopPane desktop, JPanel centerPanel, Settings settings, Callback callback) {
 		
-		super("Settings" , false, // resizable
+		super("New Screenshot Session" , false, // resizable
 				true, // closable
 				false, // maximizable
 				false);// iconifiable
@@ -96,17 +96,12 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 			title="";
 		}
 		
-		setTitle("Settings" +  title);
-		
+		setTitle("New Screenshot Session" +  title);
 
-		
-		// ...Create the GUI and put it in the window...
 		this.desktopPane = desktop;
 		Dimension desktopSize = desktopPane.getSize();
 		Dimension jInternalFrameSize = getSize();
 		
-//		log.info("centerPanel = " +centerPanel.getPreferredSize() + ". mainFrame = "+mainFrame.getSize()+ "desktopSize.width="+desktopSize.width + " .desktopSize.height = "+desktopSize.height + " .jInternalFrameSize.width = "+jInternalFrameSize.width+ " . jInternalFrameSize.width =" +jInternalFrameSize.width);
-
 		int width2 = (int) ((desktopSize.width - jInternalFrameSize.width) / 1.3);
 		int height2 = (int) (desktopSize.height / 1.3);
 		setBounds(185, 25, width2, height2);
@@ -151,46 +146,48 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		contentPane.setLayout(null);
 
 		Border border = BorderFactory.createLineBorder(Color.BLUE, 5);
+		
+		int line = 10; 
 
 		JLabel outputFolderLabel = new JLabel("Output Folder");
 		outputFolderLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		outputFolderLabel.setBounds(5, 10, 100, 30);
-//		outputFolderLabel.setBorder(border);
+		outputFolderLabel.setBounds(5, line, 100, 30);
 		contentPane.add(outputFolderLabel);
 
 		outputFolderTextField = new JTextField();
 		outputFolderTextField.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		outputFolderTextField.setBounds(200, 10, 228, 30);
+		outputFolderTextField.setBounds(200, line, 228, 30);
 		contentPane.add(outputFolderTextField);
 		outputFolderTextField.setColumns(10);
 		String screenshotsFolder = getSettings().getScreenshotsFolder();
 		if (screenshotsFolder != null) {
 			outputFolderTextField.setText(screenshotsFolder);
 		}
-		// outputFolderTextField.setText("/Users/youssef/Pictures");
 
 		JButton browseButton = new JButton("Browse...");
 		browseButton.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		browseButton.setBounds(435, 10, 100, 30);
+		browseButton.setBounds(435, line, 100, 30);
 		browseButton.setActionCommand("browse");
 		browseButton.addActionListener(this);
 		contentPane.add(browseButton);
+		
+		line+=30;
 
 		JLabel startTimeLabel = new JLabel("Start Time");
 		startTimeLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		startTimeLabel.setBounds(5, 40, 100, 30);
+		startTimeLabel.setBounds(5, line, 100, 30);
 		contentPane.add(startTimeLabel);
 
 		startTimeSpinner = new JSpinner(new SpinnerDateModel());
 		JSpinner.DateEditor timeEditor = new JSpinner.DateEditor(startTimeSpinner, "dd-MM-yyyy HH:mm:ss");
 		startTimeSpinner.setEditor(timeEditor);
 		((DefaultEditor) startTimeSpinner.getEditor()).getTextField().setEditable(false);
-		startTimeSpinner.setBounds(200, 40, 170, 30);
+		startTimeSpinner.setBounds(200, line, 170, 30);
 		contentPane.add(startTimeSpinner);
-
+		line+=30;
 		JLabel endTimeLabel = new JLabel("End Time");
 		endTimeLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		endTimeLabel.setBounds(5, 70, 200, 30);
+		endTimeLabel.setBounds(5, line, 200, 30);
 		contentPane.add(endTimeLabel);
 
 		endTimeSpinner = new JSpinner(new SpinnerDateModel());
@@ -198,12 +195,13 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		endTimeSpinner.setEditor(timeEditor);
 		((DefaultEditor) endTimeSpinner.getEditor()).getTextField().setEditable(false);
 
-		endTimeSpinner.setBounds(200, 70, 170, 30);
+		endTimeSpinner.setBounds(200, line, 170, 30);
 		contentPane.add(endTimeSpinner);
+		line+=30;
 
 		JLabel everySecondLabel = new JLabel("Take screenshots every (mm:ss) ");
 		everySecondLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		everySecondLabel.setBounds(5, 100, 200, 30);
+		everySecondLabel.setBounds(5, line, 200, 30);
 		contentPane.add(everySecondLabel);
 
 		minutesSecondsTimeSpinner = new JSpinner(new SpinnerDateModel());
@@ -217,10 +215,10 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		minutesSecondsTimeSpinner.setEditor(timeEditor);
 		((DefaultEditor) minutesSecondsTimeSpinner.getEditor()).getTextField().setEditable(false);
 
-		minutesSecondsTimeSpinner.setBounds(200, 100, 100, 30);
+		minutesSecondsTimeSpinner.setBounds(200, line, 100, 30);
 		contentPane.add(minutesSecondsTimeSpinner);
-
-		JTextArea label = new JTextArea("Click and drag to create a rectangle that you want to save ");
+		line+=30;
+		JTextArea label = new JTextArea("Click and drag to select a rectangle that you want to save and hit <ENTER> ");
 //		label.setBorder(border);
 		label.setEditable(false);
 		label.setLineWrap(true);
@@ -228,13 +226,13 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		label.setColumns(20);
 		label.setRows(5);
 		label.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		label.setBounds(5, 150, 195, 40);
+		label.setBounds(5, line, 195, 50);
 		label.setBackground(new Color(238, 238, 238));
 		contentPane.add(label);
 
 		JButton selectRectangleButton = new JButton("Select Rectangle");
 		selectRectangleButton.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		selectRectangleButton.setBounds(200, 150, 155, 35);
+		selectRectangleButton.setBounds(200, line, 155, 35);
 		selectRectangleButton.setActionCommand("select-rectangle");
 		selectRectangleButton.addActionListener(this);
 		contentPane.add(selectRectangleButton);
@@ -247,7 +245,7 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		selectedRectangleTextArea.setColumns(20);
 		selectedRectangleTextArea.setRows(5);
 		selectedRectangleTextArea.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		selectedRectangleTextArea.setBounds(365, 150, 200, 100);
+		selectedRectangleTextArea.setBounds(365, line, 200, 100);
 		selectedRectangleTextArea.setBackground(new Color(238, 238, 238));
 		contentPane.add(selectedRectangleTextArea);
 
@@ -267,9 +265,11 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 				}
 			}
 		});
+		
+		line+=100;
 		runTaskPeriodicallyCheckBox.setBorder(border);
 		runTaskPeriodicallyCheckBox.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		runTaskPeriodicallyCheckBox.setBounds(5, 250, 230, 30);
+		runTaskPeriodicallyCheckBox.setBounds(5, line, 230, 30);
 		contentPane.add(runTaskPeriodicallyCheckBox);
 
 		SpinnerNumberModel m_numberSpinnerModel;
@@ -281,7 +281,7 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		
 		hoursSpinner = new JSpinner(m_numberSpinnerModel);
 		hoursSpinner.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		hoursSpinner.setBounds(235, 250, 55, 30);
+		hoursSpinner.setBounds(235, line, 55, 30);
 		((DefaultEditor) hoursSpinner.getEditor()).getTextField().setEditable(false);
 
 		border = BorderFactory.createLineBorder(Color.RED, 2);
@@ -292,12 +292,14 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		JLabel hoursLabel = new JLabel("hours");
 //		runningJobPeriodicallyLabel.setBorder(border);
 		hoursLabel.setFont(new Font("Times New Roman", Font.PLAIN, 14));
-		hoursLabel.setBounds(295, 250, 65, 30);
+		hoursLabel.setBounds(295, line, 65, 30);
 		contentPane.add(hoursLabel);
+		
+		line+=65;
 
 		JButton saveButton = new JButton("Save");
 		saveButton.setFont(new Font("Tahoma", Font.PLAIN, 14));
-		saveButton.setBounds(450, 315, 100, 30);
+		saveButton.setBounds(450, line, 100, 30);
 		saveButton.setActionCommand("save");
 		saveButton.addActionListener(this);
 		contentPane.add(saveButton);
@@ -306,7 +308,7 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 	private void startNewScrrenshotSession() {
 		Toolkit toolkit = Toolkit.getDefaultToolkit();
 		ClassLoader classLoader = getClass().getClassLoader();
-		URL resource = classLoader.getResource(Preferences.cursorFileName);
+		URL resource = classLoader.getResource(Preferences.CURSOR_FILE);
 		Image image = toolkit.getImage(resource);
 		Cursor cursor = toolkit.createCustomCursor(image, new Point(0, 0), "png");
 		FullScreenGrabberJFrame fullScreenGrabberInternalFrame = new FullScreenGrabberJFrame(this, null);
@@ -355,7 +357,7 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 				return;
 			}
 
-			File settingsFile = new File(Preferences.applicationSettingsFolder, Preferences.settingsFile);
+			File settingsFile = new File(Preferences.APPLICATION_SETTINGS_FOLDER, Preferences.SETTINGS_FILE);
 
 			if (settingsFile.exists()) {
 				log.info(settingsFile + " already exists");
@@ -414,10 +416,10 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 
 	private void saveSchedule() {
 
-		File jsonSettingFile = new File(Preferences.applicationSettingsFolder, Preferences.settingsFile);
-		Gson gson = new GsonBuilder().setPrettyPrinting().create();
+//		File jsonSettingFile = new File(Preferences.APPLICATION_SETTINGS_FOLDER, Preferences.SETTINGS_FILE);
+//		Gson gson = new GsonBuilder().setPrettyPrinting().create();
 		Settings settings;
-		String settingsJson = null;
+//		String settingsJson = null;
 		settings = getSettings();
 
 		if (settings == null)
@@ -444,20 +446,12 @@ public class SettingsInternalFrame extends JInternalFrame implements ActionListe
 		boolean runTaskPeriodically = runTaskPeriodicallyCheckBox.isSelected();
 		int taskRunInterval = (Integer) hoursSpinner.getValue();
 
-		scheduledJob = new ScheduledJob(id, startDate.toString(), endDate.toString(), period, getSelectedRectangle(),
+		scheduledJob = new ScreenGrabScheduledJob(id, startDate.toString(), endDate.toString(), period, getSelectedRectangle(),
 				runTaskPeriodically, taskRunInterval);
 		scheduledJob.setStatus(ScheduledJobStatus.SCHEDULED);
 		scheduledJobList.add(scheduledJob);
 		settings.setSchedules(scheduledJobList);
-		settingsJson = gson.toJson(settings, Settings.class);
-
-		try {
-			FileWriter file = new FileWriter(jsonSettingFile);
-			file.write(settingsJson);
-			file.close();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+		Utilities.persistSettings(settings);
 		getCallback().taskTerminated(scheduledJob, settings);
 		dispose();
 	}

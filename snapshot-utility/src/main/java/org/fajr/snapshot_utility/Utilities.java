@@ -12,16 +12,18 @@ import org.apache.log4j.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
+import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
 
 public class Utilities {
 
 	static Logger log = Logger.getLogger(Utilities.class.getName());
 
 
-	public static synchronized void readSettingsWithCallback(Callback callback) {
+	public static synchronized void readSettingsWithCallback1(Callback callback) {
 		//log.info("Reading Fajr App settings...");
-		String applicationSettingsFolder = Preferences.applicationSettingsFolder;
-		String settingsFile = Preferences.settingsFile;
+		String applicationSettingsFolder = Preferences.APPLICATION_SETTINGS_FOLDER;
+		String settingsFile = Preferences.SETTINGS_FILE;
 
 		File applicationSettingsDirectory = new File(applicationSettingsFolder);
 
@@ -92,7 +94,7 @@ public class Utilities {
 		String settingsJson = gson.toJson(settings, Settings.class);
 
 		try {
-			File jsonSettingFile = new File(Preferences.applicationSettingsFolder, Preferences.settingsFile);
+			File jsonSettingFile = new File(Preferences.APPLICATION_SETTINGS_FOLDER, Preferences.SETTINGS_FILE);
 			FileWriter file = new FileWriter(jsonSettingFile);
 			file.write(settingsJson);
 			file.close();
@@ -137,33 +139,79 @@ public class Utilities {
 			}
 		});
 	}
+	
+	public static synchronized void readSettingsWithCallback(Callback callback) {
+		//log.info("Reading Fajr App settings...");
+		String applicationSettingsFolder = Preferences.APPLICATION_SETTINGS_FOLDER;
+		String settingsFile = Preferences.SETTINGS_FILE;
 
-//	public static void readSettingsWithCallback(Callback callback) {
-//		String path = System.getProperty("user.home") + File.separator + "Fajr App";
-//		path += File.separator + "Settings";
-//		File settingsFolder = new File(path);
-//		JSONParser parser = new JSONParser();
-//		JSONObject settings;
-//		try {
-//			String fileName = settingsFolder + File.separator + "settings.json";
-//			File settingsFile = new File(fileName);
-//			if (settingsFile.exists()) {
-//				settings = (JSONObject) parser.parse(new FileReader(fileName));
-//				screenshotsFolder = (String) settings.get("screenshot folder");
-//				System.out.println(screenshotsFolder);
-////				startTime = (String) settings.get("start time");
-////				endTime = (String) settings.get("end time");
-////				periodicity = (String) settings.get("periodicity");
-//
-//				callback.taskTerminated(true, "Fajr settings initialized successfully!");
-//			} else {
-//				// setting file not there, return to create a new one
-//				callback.taskTerminated(true, "setting file not found");
-//			}
-//		} catch (IOException | ParseException e) {
-//			// TODO Auto-generated catch block
-//			e.printStackTrace();
-//			callback.taskTerminated(false, e.getMessage());
-//		}
-//	}
+		File applicationSettingsDirectory = new File(applicationSettingsFolder);
+
+		if (!applicationSettingsDirectory.exists())
+			applicationSettingsDirectory.mkdirs();
+
+		File applicationSettingsFile = new File(applicationSettingsFolder, settingsFile);
+
+		Settings settings = null;
+		if (!applicationSettingsFile.exists()) {
+
+			try {
+				applicationSettingsFile.createNewFile();
+				settings = new Settings();
+				settings.setRunMode("REAL");
+				persistSettings(settings);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
+		} else {
+			//Gson gson = new Gson();
+			try (Reader reader = new FileReader(applicationSettingsFile)) {
+				
+				final TypeToken<Settings> requestListTypeToken = new TypeToken<Settings>() {};
+				 final RuntimeTypeAdapterFactory<ScheduledJob> typeFactory = RuntimeTypeAdapterFactory
+			                .of(ScheduledJob.class, "clazz")
+			                .registerSubtype(IpCameraScheduledJob.class,IpCameraScheduledJob.class.getName())
+			                .registerSubtype(ScreenGrabScheduledJob.class,ScreenGrabScheduledJob.class.getName());
+				 
+				 final Gson gson = new GsonBuilder().registerTypeAdapterFactory(
+			                typeFactory).create();
+				 
+				 
+				
+				settings = gson.fromJson(reader, requestListTypeToken.getType());
+				if (settings == null) {
+					settings = new Settings();
+					settings.setRunMode("REAL");
+					persistSettings(settings);
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
+		}
+
+		callback.taskTerminated(true, "setting initialized", settings);
+
+	}
+	
+	public static void main(String[] args) {
+		readSettingsWithCallback(new Callback() {
+			
+			@Override
+			public void taskTerminated(ScheduledJob scheduledJob, Settings settings) {
+				// TODO Auto-generated method stub
+				log.info("1");
+				
+			}
+			
+			@Override
+			public void taskTerminated(boolean success, String message, Settings settings) {
+				// TODO Auto-generated method stub
+				log.info("setting = "+ settings);
+
+			}
+		});
+	}
+	
 }

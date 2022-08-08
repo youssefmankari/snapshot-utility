@@ -22,11 +22,11 @@ import org.apache.log4j.Logger;
 public class FullScreenGrabberJFrame extends JFrame {
 
 	private static final long serialVersionUID = 1L;
-	private SettingsInternalFrame settingsInternalFrame;
+	private ScreenshotSessionInternalFrame settingsInternalFrame;
 	static Logger log = Logger.getLogger(FullScreenGrabberJFrame.class.getName());
 
 
-	public FullScreenGrabberJFrame(SettingsInternalFrame settingsInternalFrame, Settings fajrAppSettings) {
+	public FullScreenGrabberJFrame(ScreenshotSessionInternalFrame settingsInternalFrame, Settings fajrAppSettings) {
 		this.settingsInternalFrame = settingsInternalFrame;
 		setUndecorated(true);
 		GraphicsEnvironment graphicsEnvironment = GraphicsEnvironment.getLocalGraphicsEnvironment();

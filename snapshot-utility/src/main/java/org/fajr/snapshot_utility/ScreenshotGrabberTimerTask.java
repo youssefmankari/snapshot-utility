@@ -19,24 +19,17 @@ import javax.imageio.ImageIO;
 
 import org.apache.commons.lang3.time.DateUtils;
 import org.apache.log4j.Logger;
+import org.fajr.snapshot_utility.event.ScreenshotEvent;
 import org.fajr.snapshot_utility.event.listener.ScreenshotEventListener;
 
-public class ScreenshotGrabberTimerTask extends TimerTask {
+public class ScreenshotGrabberTimerTask extends GrabberTimerTask {
 	static Logger log = Logger.getLogger(ScreenshotGrabberTimerTask.class.getName());
 
-	private int id;
-	private Timer timer;
-	private Date startAt, endAt;
-	private int periodicity;
 	private Rectangle selectedRectangle;
-	private ScreenshotEventListener screenshotEventListener;
-	private Settings settings;
 	private Timer screenshotTimer;
 	private Robot robot;
-	private boolean runPeriodically;
-	private int interval;
-	
 	public ScreenshotGrabberTimerTask(int id, Settings settings, SelectedRectangle selectedRectangle, Timer timer, Date startAt, Date endAt, int millis) {
+		super(id,timer,startAt,endAt,millis, settings,  millis);
 		initRobot();
 		setId(id);
 		setTimer(timer);
@@ -48,22 +41,6 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 		setSettings(settings);
 	}
 	
-	public boolean isRunPeriodically() {
-		return runPeriodically;
-	}
-
-	public void setRunPeriodically(boolean runPeriodically) {
-		this.runPeriodically = runPeriodically;
-	}
-
-	public int getInterval() {
-		return interval;
-	}
-
-	public void setInterval(int interval) {
-		this.interval = interval;
-	}
-
 	private void initRobot() {
 			GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
 			GraphicsDevice[] screens = ge.getScreenDevices();
@@ -75,22 +52,6 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 			}
 	}
 	
-	public void setId(int id) {
-		this.id = id;
-	}
-	
-	public int getId() {
-		return id;
-	}
-	
-	public void setSettings(Settings settings) {
-		this.settings = settings;
-	}
-	
-	public Settings getSettings() {
-		return settings;
-	}
-
 	@Override
 	public void run() {
 		log.info(LocalDateTime.now() + " : daily  task running...");
@@ -106,7 +67,14 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 
 				getScreenshotEventListener().screenshotGrabberStarted(getId());
 
-				captureSelectedRectangle();
+				try {
+					captureSelectedRectangle();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+					screenshotTimer.cancel();
+					getScreenshotEventListener().screenshotGrabberEndedWithException(e.getMessage() ,getId(), startAt, endAt);
+				}
 				Date now = new Date();
 				
 				//log.info("now = "+now + " . getEndAt() = "+getEndAt());
@@ -122,9 +90,6 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 						startAt = DateTimeUtils.addSecondsToDate(startAt,getInterval()*60*60);
 						endAt   = DateTimeUtils.addSecondsToDate(endAt,getInterval()*60*60); 
 					}
-					
-
-
 					log.info("Now, endAt = "+endAt);
 					screenshotTimer.cancel();
 					getScreenshotEventListener().screenshotGrabberEnded(getId(), startAt, endAt);
@@ -139,48 +104,23 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 		return screenshotTimer;
 	}
 
-	protected void captureSelectedRectangle() {
-		String random = randomAlphanumeric(10);
+	protected void captureSelectedRectangle() throws IOException {
+		
 		BufferedImage screenShot = robot.createScreenCapture(getSelectedRectangle());
-		File screenshotsFolder = new File(getSettings().getScreenshotsFolder(),"Fajr Screenshots");
-		if(!screenshotsFolder.exists()) 
-			screenshotsFolder.mkdirs();
-		File outputfile = new File(getSettings().getScreenshotsFolder()+File.separator+"Fajr Screenshots", "image_"+ getId()+"_" + random + ".jpg");
-
-		try {
-			ImageIO.write(screenShot, "jpg", outputfile);
-		} catch (IOException e1) {
-			e1.printStackTrace();
-		}
+	
+		File outputfile = saveBufferedImage(screenShot);
+		ScreenshotEvent sce = new ScreenshotEvent();
+		sce.setScreenshotFile(outputfile);
+		sce.setScheduledJobId(getId());
+		getScreenshotEventListener().screenshotGrabberDidTakeScreenshot(sce);//, startAt, endAt);
+		
 	}
+
+	
 
 	public void setTimer(Timer timer) {
 		this.timer = timer;
 
-	}
-
-	public Date getStartAt() {
-		return startAt;
-	}
-
-	public void setStartAt(Date startAt) {
-		this.startAt = startAt;
-	}
-
-	public Date getEndAt() {
-		return endAt;
-	}
-
-	public void setEndAt(Date endAt) {
-		this.endAt = endAt;
-	}
-
-	public int getPeriodicity() {
-		return periodicity;
-	}
-
-	public void setPeriodicity(int periodicity) {
-		this.periodicity = periodicity;
 	}
 
 	public Timer getTimer() {
@@ -206,7 +146,7 @@ public class ScreenshotGrabberTimerTask extends TimerTask {
 	
 	@Override
 	public boolean equals(Object obj) {
-		ScreenshotGrabberTimerTask  task = (ScreenshotGrabberTimerTask)obj;
+		GrabberTimerTask  task = (GrabberTimerTask)obj;
 		return getId() == task.getId();
 	}
 	

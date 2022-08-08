@@ -3,11 +3,15 @@ package org.fajr.snapshot_utility;
 import java.util.List;
 
 import com.google.gson.Gson;
+import com.google.gson.annotations.SerializedName;
 
 public class Settings {
 	
+//	@SerializedName("screenshotsFolder")
 	public  String screenshotsFolder;
+//	@SerializedName("runMode")
 	public String runMode;// TEST or REAL
+//	@SerializedName("schedules")
 	public List<ScheduledJob> schedules;
 	
 	public String getScreenshotsFolder() {

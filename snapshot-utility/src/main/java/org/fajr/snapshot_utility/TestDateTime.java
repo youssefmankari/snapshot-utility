@@ -13,6 +13,12 @@ public class TestDateTime {
 		LocalDateTime localDateTime = LocalDateTime.of(localDate, time);
 		System.out.println("localDateTime"+localDateTime);
 		
+		IpCameraScheduledJob ipCameraScheduledJob = new IpCameraScheduledJob();
+		ScheduledJob ipCameraScheduledJob2 = new IpCameraScheduledJob();
+		System.out.println("ipCameraScheduledJob = "+ipCameraScheduledJob.getClass());
+		System.out.println("ipCameraScheduledJob2 = "+ipCameraScheduledJob2.getClass());
+
+		
 	}
 
 }

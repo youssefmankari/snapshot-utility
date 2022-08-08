@@ -14,6 +14,7 @@ public class Main {
 		log.debug("Fajr App started.");
 		Main main = new Main();
 		main.start();
+		
 	}
 
 	private void start() {
@@ -55,31 +56,35 @@ public class Main {
 		@Override
 		public void run() {
 			if (snapshotWindow != null) {
-				List<ScreenshotGrabberTimerTask> screenshotGrabberTimerTaskList = snapshotWindow
-						.getScreenshotGrabberTimerTaskList();
-				ScheduledJobsList scheduledJobsList = snapshotWindow.getScheduledJobsList();
+				cancelTimerTasksAndUpdateTasksStatuses();
+			}
 
-				for (Iterator<ScheduledJob> iterator = scheduledJobsList.iterator(); iterator.hasNext();) {
+		}
 
-					ScheduledJob scheduledJob = iterator.next();
-					if (scheduledJob.getStatus() == ScheduledJobStatus.RUNNING) {
+		private void cancelTimerTasksAndUpdateTasksStatuses() {
+			List<GrabberTimerTask> grabberTimerTaskList = snapshotWindow
+					.getGrabberTimerTaskList();
+			ScheduledJobsList scheduledJobsList = snapshotWindow.getScheduledJobsList();
 
-						int id = scheduledJob.getId();
+			for (Iterator<ScheduledJob> iterator = scheduledJobsList.iterator(); iterator.hasNext();) {
 
-						for (Iterator<ScreenshotGrabberTimerTask> iterator2 = screenshotGrabberTimerTaskList
-								.iterator(); iterator2.hasNext();) {
-							ScreenshotGrabberTimerTask screenshotGrabberTimerTask = iterator2.next();
-							if (screenshotGrabberTimerTask.getId() == id) {
-								screenshotGrabberTimerTask.getTimer().cancel();
-								screenshotGrabberTimerTask.cancel();
-								Utilities.updateStatusForScheduleId(id, ScheduledJobStatus.ENDED);
-								break;
-							}
+				ScheduledJob scheduledJob = iterator.next();
+				if (scheduledJob.getStatus() == ScheduledJobStatus.RUNNING) {
+
+					int id = scheduledJob.getId();
+
+					for (Iterator<GrabberTimerTask> iterator2 = grabberTimerTaskList
+							.iterator(); iterator2.hasNext();) {
+						GrabberTimerTask grabberTimerTask = iterator2.next();
+						if (grabberTimerTask.getId() == id) {
+							grabberTimerTask.getTimer().cancel();
+							grabberTimerTask.cancel();
+							Utilities.updateStatusForScheduleId(id, ScheduledJobStatus.ENDED);
+							break;
 						}
 					}
 				}
 			}
-
 		}
 	}
 }
